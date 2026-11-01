@@ -30,4 +30,11 @@ uv run --frozen lint-imports
 echo "==> tests with coverage (real PostgreSQL)"
 uv run --frozen pytest --cov --cov-branch --cov-report=term-missing --cov-fail-under=90 -q
 
+echo "==> built wheel ships the migrations"
+wheel_dir=$(mktemp -d)
+trap 'rm -r "$wheel_dir"' EXIT
+uv build --wheel --quiet --out-dir "$wheel_dir"
+python3 -I -m zipfile -l "$wheel_dir"/*.whl | grep -q 'persistence/migrations/script.py.mako'
+python3 -I -m zipfile -l "$wheel_dir"/*.whl | grep -q 'persistence/migrations/versions/0001_'
+
 echo "==> ALL GATES PASSED"
