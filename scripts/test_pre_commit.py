@@ -155,7 +155,7 @@ class PreCommit(unittest.TestCase):
     def test_secret_in_a_binary_looking_file_is_blocked(self) -> None:
         secret = "ghp_" + "e" * 36
         target = self.repo.path / "blob.bin"
-        target.write_bytes(b"\x00\x01" + secret.encode() + b"\n")
+        target.write_bytes(b"\x00\xe2\xff" + secret.encode() + b"\n")
         self.repo.git("add", "-f", "blob.bin")
         self.assert_blocked("looks like a secret")
 

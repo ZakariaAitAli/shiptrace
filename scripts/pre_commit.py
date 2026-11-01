@@ -30,7 +30,12 @@ SECRET_PATTERNS = (
 
 def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["git", *args], capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=check
+        ["git", *args],
+        capture_output=True,
+        text=True,
+        errors="replace",  # Staged files may be binary.
+        timeout=TIMEOUT_SECONDS,
+        check=check,
     )
 
 
