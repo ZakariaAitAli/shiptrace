@@ -196,11 +196,12 @@ shiptrace/
 ├── pyproject.toml, uv.lock       Dependencies, tool config, import contracts (P0)
 ├── compose.yaml                  PostgreSQL (P0), full stack (P4)
 ├── Dockerfile                    (P4)
-├── migrations/                   Alembic environment and versions (P0)
+├── deploy/postgres/              Role bootstrap, run once by a superuser (P0)
 ├── src/shiptrace/
 │   ├── domain/                   Pure rules
 │   ├── application/              Use cases and ports
-│   ├── persistence/              SQLAlchemy models and repositories
+│   ├── persistence/              SQLAlchemy, repositories, migrations/ (shipped with the package,
+│   │                             because /readyz needs the revision list at runtime)
 │   ├── api/                      Routers, schemas, middleware, dashboard/
 │   └── bootstrap/                Settings, app factory, logging/telemetry setup, CLI
 ├── tests/

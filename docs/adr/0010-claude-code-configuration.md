@@ -27,10 +27,10 @@ per-session cost, and project skills cover the need. No MCP server is needed; `g
 fetching suffice, and each server widens the injection surface.
 
 **Limits, stated plainly.** Text-based command guards can be evaded by indirection, such as a
-written script. They stop mistakes, and are not a security boundary. A real boundary needs the
-OS sandbox, which needs `socat` on this machine, and cannot wrap Docker.
+written script, or by a tool that rewrites files, as `ruff format .` once did to a hook. They stop
+mistakes, and are not a security boundary. The OS sandbox is the boundary. It cannot wrap Docker, so
+excluded commands run with full access, including `scripts/verify.sh`, which the agent can edit.
 
 **Rejected.** *Long CLAUDE.md*: docs target under 200 lines, and adherence falls as it grows.
-*`sandbox.failIfUnavailable` committed now*: would stop Claude Code from starting until the
-missing package is installed. *Stop hook running the suite*: slow, and it re-runs on every
+*Stop hook running the suite*: slow, and it re-runs on every
 turn; the `verify-slice` skill does this at the right moment instead.

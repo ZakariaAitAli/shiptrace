@@ -18,10 +18,12 @@ unresolved risks written down. New behavior starts with a failing test.
 | **P6 Recovery and assessment** | Backup/restore runbook, tested restore, final ASVS assessment, risk register | Restore drill recorded with measured RTO, row counts and log integrity; no ASVS item in scope without evidence or accepted risk | AC19 |
 | **P7 Cloud plan** *(approval required first)* | Terraform, network and IAM design, WAF evaluation, rollback design, sizing, cost estimate from current AWS pricing | `terraform validate`, `tflint`, policy scan and a reviewed plan. **No apply, no spend, no credentials touched without explicit approval** | — |
 
-## Next slice: P0.1 skeleton to green
+## P0.1 skeleton to green: done
 
-1. Owner decisions from the foundation review are applied (below).
-2. Install `uv` on the host from a checksum-verified release.
+Evidence is in the verification log, entries V14 to V24.
+
+1. Owner decisions applied.
+2. `uv` installed from a checksum-verified release.
 3. Tests first: `tests/unit` for settings validation, and `tests/integration` for every `/readyz`
    case in AC16, including older and newer schemas.
 4. `pyproject.toml` with `requires-python = ">=3.14,<3.15"`, `uv.lock`, Ruff, strict mypy,
@@ -29,16 +31,19 @@ unresolved risks written down. New behavior starts with a failing test.
 5. App factory, `/healthz`, `/readyz`; a role bootstrap script; Alembic with a first migration that applies grants.
 6. Extend `scripts/verify.sh` to run all gates.
 
-Done when the P0 gate passes on a clean clone.
+## Next slice: P0.2 close the P0 gate
+
+Git pre-commit hook, a repeatable smoke script from the manual end-to-end run, and the owner's guard
+patch applied and committed. Then the P0 gate review, then P1.
 
 ## Owner decisions needed
 
 | # | Decision | Recommendation | Why it matters |
 |---|---|---|---|
-| D1 | Repository visibility | **Public** | Artifact attestations need public repos below Enterprise Cloud; without this, AC22 needs a different provenance design |
-| D2 | Default branch | Rename `master` to `main` before the first commit | Repository metadata expects `main`; `master` has no commits yet, so it is free now |
-| D3 | First commit of the foundation | Approve a commit | Worktrees and hook protection for tracked migrations need history |
-| D4 | Enable OS sandbox | `sudo apt-get install socat`, then enable with Docker excluded | Turns the agent guardrails into a real boundary |
-| D5 | Accepted MVP risks (six) | Sign off threat model §6 | Or tell me which to design out now |
+| D1 | Repository visibility | **Decided: public**, once approved to publish | Artifact attestations need public repos below Enterprise Cloud; without this, AC22 needs a different provenance design |
+| D2 | Default branch | **Done: `main`** | Repository metadata expects `main`; `master` has no commits yet, so it is free now |
+| D3 | First commit of the foundation | **Done, signed** | Worktrees and hook protection for tracked migrations need history |
+| D4 | Enable OS sandbox | Apply the guard patch, which holds the proven config | Turns the agent guardrails into a real boundary |
+| D5 | Accepted MVP risks (six) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
 | D6 | Dashboard accounts (ADR-0006) | Approve before P2 | Replaces the rejected token sign-in |
 | D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The guard correctly stopped me checking |

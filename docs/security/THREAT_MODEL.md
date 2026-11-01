@@ -60,7 +60,7 @@ A *stolen* admin token is in scope (T27).
 | T20 | Malicious dependency (T, E) | A4 | Hashed `uv.lock`, `pip-audit`, Dependabot review, SBOM, no install-time network in runtime image | CI gates | **Medium**: pinning freezes a bad version as faithfully as a good one |
 | T21 | Compromised action or tag-moving attack (T) | A4 | `actions.lock` for transitive pins, minimal `permissions`, zizmor | AC21 | Low to medium; a lockfile pins, but does not vet |
 | T22 | Unverified or swapped image in production (T) | A4 | Digest-only promotion, provenance and SBOM attestations verified before deploy | AC22 | Low |
-| T23 | Agent reads secrets, pushes, or runs destructive commands (T, I, E) | A5 | Permission rules, fail-closed hooks, read-only reviewers. Text-matching guards are guardrails, not a boundary | Hook test suite | **Medium** until the sandbox is on; see ADR-0010 |
+| T23 | Agent reads secrets, pushes, or runs destructive commands (T, I, E) | A5 | Permission rules, fail-closed hooks, read-only reviewers. Text-matching guards are guardrails, not a boundary | Hook test suite | **Medium** until the proven sandbox config is applied; see ADR-0010 |
 | T24 | Prompt injection through fetched docs, dependencies or issues (T) | A5 | No auto-installed plugins, no MCP servers, review of third-party content, human gate on outward actions | Config check | Medium; inherent to agent use |
 | T25 | Key squatting: a stolen token pre-posts `failed` for a predictable future `gha-<run_id>-<attempt>` key, so the real `succeeded` is refused forever (T, D) | A2 | Binding limits scope; `409` is logged and counted; the example surfaces it as a warning | AC23 | **Medium**: that deployment's history stays wrong; accepted |
 | T26 | Rollback steering: forged `reverted` events walk "latest" back to an old, vulnerable version, and people redeploy it (T) | A2 | Mandatory environment binding, so a staging token cannot touch production; attribution; dashboard shows `reverted` with its reporter | AC7 | **Medium**: a production token can still do this until revoked |
@@ -72,7 +72,7 @@ If ShipTrace is down, a customer deployment must still proceed. The example work
 bounded retries and `continue-on-error`, so an outage means a **gap in history, not a failed
 deploy**. This trades completeness for availability of the system people care about more.
 
-## 6. Accepted risks for MVP (need owner sign-off)
+## 6. Accepted risks for MVP (provisional; reassess before release)
 
 1. T2: stolen ingest tokens stay valid until noticed and revoked.
 2. T10: per-process rate limiting only.

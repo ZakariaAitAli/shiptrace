@@ -13,7 +13,9 @@ the authority in P0; this records the starting point and why.
 | git 2.53.0, jq 1.8.1, node 22, actionlint 1.7.9, Python 3.14.4 | Present |
 | Claude Code 2.1.316 | Present; `onFailure` hook option needs ≥ 2.1.295 |
 | bubblewrap | Present |
-| **Missing** | `uv`, `socat`, `make`, `psql`, `shellcheck`, `hadolint`; system Python has no `ensurepip` |
+| uv 0.13.6 | Installed from the GitHub release, SHA-256 verified. Managed Python 3.14.10 |
+| socat | Installed by the owner |
+| **Missing** | `make`, `psql`, `shellcheck`, `hadolint`; system Python has no `ensurepip` |
 
 Consequences: project commands are shell scripts rather than a Makefile. `psql` runs through the
 container. Scanners run in CI or through `uv tool`, and are not assumed on the host.
@@ -30,18 +32,17 @@ container. Scanners run in CI or through `uv tool`, and are not assumed on the h
 | SQLAlchemy | 2.1.6 | Requires Python ≥ 3.11 |
 | Alembic | 1.20.1 | |
 | psycopg (binary) | 3.3.6 | No system libpq needed |
-| Uvicorn | 0.54.0 | Set `timeout_graceful_shutdown`; default `None` |
-| structlog | 26.1.0 | |
-| Jinja2 | 3.1.6 | |
-| python-multipart | 0.0.33 | Login form parsing |
+| Uvicorn | 0.54.0 | Set `timeout_graceful_shutdown`; default `None`. Exits 143 on SIGTERM by design: it re-raises the signal after shutting down |
+| structlog, Jinja2 | Arrive with P3, P2 | |
 | OpenTelemetry SDK | 1.45.2 | Instrumentation `0.66b2`, pinned exactly |
 | pytest / pytest-cov | 9.2.0 / 7.1.0 | |
-| Testcontainers | 4.15.0 | |
-| Hypothesis | 6.170.14 | Ordering properties |
-| Schemathesis | 4.32.7 | Schema-driven contract tests |
+| Testcontainers | 4.15.0 | Import from `testcontainers.community.postgres`; the old path is deprecated |
+| httpx2 | 2.16.0 | Required by Starlette's test client; `httpx` is deprecated there. Declared in Starlette's metadata; source `pydantic/httpx2` |
+| Hypothesis, Schemathesis | Arrive with P1, P2 | Dependencies are added when first used |
 | Ruff / mypy | 0.17.3 / 2.4.1 | |
 | import-linter | 2.15 | Layer contracts |
-| pip-audit / zizmor | 2.10.1 / 1.31.1 | |
+| gitleaks | 8.30.1, image by digest | `.gitleaks.toml` allows only the `gha-<run>-<attempt>` format |
+| pip-audit / zizmor | Arrive with P5 | |
 
 Compatibility proof: `docs/engineering/VERIFICATION_LOG.md`, entry V3. Not proven yet: runtime
 behaviour of these versions together, which P0 and P1 tests will show.

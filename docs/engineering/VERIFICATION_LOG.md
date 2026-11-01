@@ -32,7 +32,7 @@ was reasoned by the reviewer and author. It is **not tested yet**; P1 concurrenc
 
 | V13 | Guard active on the author's own session | Blocked real commands four times, including two false positives on prose in heredocs and one read-only `gh` query. Recorded as known limitations |
 
-### Not verified
+### Not verified at foundation close
 
 - `format_python.py` behaviour when it runs Ruff: only its no-op path was tested. Needs P0.
 - Permission `deny` rules in isolation: V8 proved the hook, which fires first. They were not
@@ -46,3 +46,32 @@ was reasoned by the reviewer and author. It is **not tested yet**; P1 concurrenc
 - Any application behaviour: none exists.
 - AWS prices: only Fargate rates were read from the AWS pricing page (us-east-1 x86
   ~$0.0405/vCPU-h and ~$0.0044/GB-h). A full estimate is deferred to P7.
+
+## P0.1 and pre-implementation checks, 2026-11-01
+
+| ID | Check | Outcome |
+|---|---|---|
+| V14 | gitleaks 8.30.1 by digest, no network, over working tree and staged content, with a planted-secret control | One finding, a false positive on the spec's `gha-` example. Narrow allowlist added; a non-`gha` value in the same field is still caught. Tree and staged content clean. Machine-path scan clean |
+| V15 | Sandbox probes from a separate headless session | Blocked: writes outside the project, `.claude/hooks`, `.claude/settings.json`, `.git/hooks`, direct network, unlisted host, Docker socket. Allowed: project writes, listed host through the proxy. Credential directories appear empty on tmpfs (canary 0 of 1, `.ssh` 0 of 5) |
+| V16 | Everyday commands inside the sandbox | git, uv, ruff, mypy, lint-imports, unit tests and hook tests all work. `scripts/verify.sh` passes through its exclusion |
+| V17 | Guard mutation re-run on the rewritten hooks, on a scratch copy | 39 of 39 killed |
+| V18 | 74 legitimate commands against the guard | 13 false positives, mostly read-only `gh`. 10 fixed in the patch. 3 remain, all fail safe: `.env` mentioned in a grep or commit message |
+| V19 | Guard patch, on a copy | 29 new subtests failed first, then passed; 13 of 13 new mutants killed; `git apply --check` passes. **Not applied**: guards change only with the owner |
+| V20 | Test-first: suite run before implementation | Collection failed, as expected |
+| V21 | Sentinel test | **Found a real defect**: `hide_input_in_errors` leaves the password in `ValidationError.errors()`. URL refusals now raise an exception Pydantic does not wrap |
+| V22 | `scripts/verify.sh` | Exit 0. 68 tests on real PostgreSQL 18.6, strict mypy on 27 files, 3 of 3 import contracts. Branch coverage 95%; `bootstrap/migrate.py` shows 0% there and is exercised by V24 instead |
+| V23 | 30 injected defects across code, SQL, layers and types | First run 27 of 30: three tests were too weak. Tests added; second run 30 of 30 |
+| V24 | Real processes: Compose PostgreSQL, `shiptrace-migrate`, Uvicorn, curl | `/readyz` 503 before migration, 200 after, 503 within 13 ms of a database stop, 200 after restart with no app restart; `/healthz` 200 throughout. SIGTERM exit 143 in 169 ms, idle. No password in app output |
+
+Incident: `ruff format .` reformatted protected `.claude/hooks/readonly_bash.py` through a route the
+guard cannot see. Line wrapping only, confirmed by diff, and committed in that form. `.claude` is now
+excluded from Ruff.
+
+### Not verified
+
+- AC17: an in-flight request surviving SIGTERM. V24 was idle. Belongs to P3.
+- `onFailure: "block"` on a hook timeout.
+- `/readyz` under real pool exhaustion.
+- Production `sslmode=verify-full` against a real TLS server: only the setting check is tested.
+- Bootstrap script on RDS: only tested on the Docker image.
+- `gh actions-lock` and `gh attestation` with local gh 2.46.0.

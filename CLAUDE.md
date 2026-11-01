@@ -6,7 +6,8 @@ for the current phase. Read before changing behavior:
 
 ## Commands
 
-- Check everything available: `scripts/verify.sh`
+- All gates, needs Docker: `scripts/verify.sh`
+- Unit tests only: `uv run --frozen pytest tests/unit -q`
 - Check Claude config and docs links only: `python3 -I scripts/check_repo.py`
 - Test hooks: `python3 -I .claude/hooks/tests/test_hooks.py`
 
