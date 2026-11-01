@@ -49,6 +49,9 @@ extend-exclude = [".claude"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "SIM", "RUF"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["shiptrace"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S106", "S603", "S608"]
 "scripts/**" = ["S603", "S607"]
