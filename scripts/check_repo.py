@@ -9,6 +9,31 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLAUDE = ROOT / ".claude"
 EDIT_TOOLS = {"Write", "Edit", "NotebookEdit", "Agent"}
+REQUIRED_DENY_READ = {
+    "~/.ssh",
+    "~/.aws",
+    "~/.config/gh",
+    "~/.claude/.credentials.json",
+    "~/.gnupg",
+    "~/.docker/config.json",
+    "~/.netrc",
+    "~/.pgpass",
+    ".env",
+    ".env.local",
+    ".env.production",
+}
+REQUIRED_DENY_WRITE = {
+    "scripts",
+    "compose.yaml",
+    "compose.override.yaml",
+    "pyproject.toml",
+    "uv.lock",
+    ".venv",
+    ".git/config",
+    ".gitleaks.toml",
+}
+ALLOWED_DOMAINS = {"pypi.org", "files.pythonhosted.org"}
+ALLOWED_EXCLUSIONS = {"scripts/verify.sh", "scripts/smoke.sh", "git commit *"}
 REQUIRED_GATES = (
     "scripts/check_repo.py",
     "scripts/check_history.py",
@@ -88,13 +113,29 @@ def check_settings() -> None:
             if hook.get("onFailure") != "block":
                 errors.append(f"settings.json: guard must fail closed: {hook['command']}")
     sandbox = settings.get("sandbox")
-    if sandbox and not (
+    if not sandbox:
+        errors.append("settings.json: the sandbox configuration is required")
+        return
+    if not (
         sandbox.get("enabled") is True
         and sandbox.get("failIfUnavailable") is True
         and sandbox.get("allowUnsandboxedCommands") is False
     ):
         errors.append("settings.json: sandbox must fail closed and forbid unsandboxed retries")
-    excluded = {f"Bash({command})" for command in (sandbox or {}).get("excludedCommands", [])}
+    filesystem = sandbox.get("filesystem", {})
+    if missing := REQUIRED_DENY_READ - set(filesystem.get("denyRead", [])):
+        errors.append(f"settings.json: denyRead is missing {sorted(missing)}")
+    if missing := REQUIRED_DENY_WRITE - set(filesystem.get("denyWrite", [])):
+        errors.append(f"settings.json: denyWrite is missing {sorted(missing)}")
+    if extra := set(filesystem.get("allowWrite", [])) | set(filesystem.get("allowRead", [])):
+        errors.append(f"settings.json: sandbox allow paths are not permitted: {sorted(extra)}")
+    if extra := set(sandbox.get("network", {}).get("allowedDomains", [])) - ALLOWED_DOMAINS:
+        errors.append(f"settings.json: network domains are not permitted: {sorted(extra)}")
+    if extra := set(sandbox.get("excludedCommands", [])) - ALLOWED_EXCLUSIONS:
+        errors.append(f"settings.json: sandbox exclusions are not permitted: {sorted(extra)}")
+    if settings.get("env", {}).get("UV_NO_SYNC") != "1":
+        errors.append("settings.json: UV_NO_SYNC must stay set")
+    excluded = {f"Bash({command})" for command in sandbox.get("excludedCommands", [])}
     if not excluded <= set(permissions.get("ask", [])):
         errors.append("settings.json: every sandbox exclusion must need approval per run")
     if excluded & set(permissions.get("allow", [])):

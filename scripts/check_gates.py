@@ -6,6 +6,7 @@ and prints the expected marker, so an unrelated failure or an unreachable Docker
 Slow, so it is not part of scripts/verify.sh. Run it before a phase gate.
 """
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,16 @@ def append(path: str, text: str) -> Breaks:
     def apply(clone: Path) -> None:
         with (clone / path).open("a") as handle:
             handle.write(text)
+
+    return apply
+
+
+def settings_change(change: Callable[[dict], None]) -> Breaks:
+    def apply(clone: Path) -> None:
+        path = clone / ".claude/settings.json"
+        settings = json.loads(path.read_text())
+        change(settings)
+        path.write_text(json.dumps(settings))
 
     return apply
 
@@ -195,6 +206,54 @@ VIOLATIONS = (
         ),
         CHECK_REPO,
         "must not have edit",
+    ),
+    Violation(
+        "sandbox removed",
+        settings_change(lambda s: s.pop("sandbox")),
+        CHECK_REPO,
+        "sandbox configuration is required",
+    ),
+    Violation(
+        "sandbox fails open",
+        settings_change(lambda s: s["sandbox"].update(failIfUnavailable=False)),
+        CHECK_REPO,
+        "must fail closed",
+    ),
+    Violation(
+        "unsandboxed retries allowed",
+        settings_change(lambda s: s["sandbox"].update(allowUnsandboxedCommands=True)),
+        CHECK_REPO,
+        "must fail closed",
+    ),
+    Violation(
+        "signing keys readable",
+        settings_change(lambda s: s["sandbox"]["filesystem"]["denyRead"].remove("~/.gnupg")),
+        CHECK_REPO,
+        "denyRead is missing",
+    ),
+    Violation(
+        "scripts writable",
+        settings_change(lambda s: s["sandbox"]["filesystem"]["denyWrite"].remove("scripts")),
+        CHECK_REPO,
+        "denyWrite is missing",
+    ),
+    Violation(
+        "network widened",
+        settings_change(lambda s: s["sandbox"]["network"]["allowedDomains"].append("github.com")),
+        CHECK_REPO,
+        "network domains are not permitted",
+    ),
+    Violation(
+        "new sandbox exclusion",
+        settings_change(lambda s: s["sandbox"]["excludedCommands"].append("docker *")),
+        CHECK_REPO,
+        "exclusions are not permitted",
+    ),
+    Violation(
+        "exclusion auto-allowed",
+        settings_change(lambda s: s["permissions"]["allow"].append("Bash(git commit *)")),
+        CHECK_REPO,
+        "must not be auto-allowed",
     ),
     Violation(
         "gate removed from verify.sh",
