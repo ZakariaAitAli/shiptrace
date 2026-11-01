@@ -12,6 +12,7 @@ TOTAL_TIMEOUT=${SMOKE_TOTAL_TIMEOUT:-180}
 HTTP_TIMEOUT=8
 
 export COMPOSE_PROJECT_NAME="shiptrace-smoke-$$"
+export COMPOSE_FILE=compose.yaml # Names it exactly, so that no override file can merge in.
 step="prerequisites"
 app_pid=""
 watchdog=""
@@ -28,7 +29,8 @@ scrub() {
 
 cleanup() {
   local status=$?
-  trap - EXIT INT TERM
+  trap '' INT TERM # A second interrupt must not skip cleanup.
+  trap - EXIT
   [[ -n $watchdog ]] && kill "$watchdog" 2>/dev/null
   if [[ -n $app_pid ]] && kill -0 "$app_pid" 2>/dev/null; then
     kill -TERM "$app_pid" 2>/dev/null
@@ -105,29 +107,43 @@ SHIPTRACE_ADMIN_PASSWORD=$(python3 -I -c 'import secrets; print(secrets.token_he
 SHIPTRACE_APP_PASSWORD=$(python3 -I -c 'import secrets; print(secrets.token_hex(16))')
 SHIPTRACE_MIGRATOR_PASSWORD=$(python3 -I -c 'import secrets; print(secrets.token_hex(16))')
 export SHIPTRACE_ADMIN_PASSWORD SHIPTRACE_APP_PASSWORD SHIPTRACE_MIGRATOR_PASSWORD
-SHIPTRACE_DB_PORT=$(free_port)
 app_port=$(free_port)
-export SHIPTRACE_DB_PORT
-
-driver=postgresql+psycopg
-host="127.0.0.1:$SHIPTRACE_DB_PORT"
 export SHIPTRACE_ENVIRONMENT=local
 export SHIPTRACE_READINESS_CACHE_SECONDS=0
-export SHIPTRACE_DATABASE_URL="$driver://shiptrace_app:$SHIPTRACE_APP_PASSWORD@$host/shiptrace"
-export SHIPTRACE_MIGRATOR_DATABASE_URL="$driver://shiptrace_migrator:$SHIPTRACE_MIGRATOR_PASSWORD@$host/shiptrace"
+
+step="install locked dependencies"
+log "$step"
+timeout "$STEP_TIMEOUT" uv sync --frozen --quiet >"$app_log" 2>&1 || fail "uv sync failed"
 
 step="start PostgreSQL through Compose"
 log "$step"
 compose_up=true
-timeout "$STEP_TIMEOUT" docker compose up --detach --wait --quiet-pull >/dev/null 2>"$app_log" ||
+# A port chosen here can still be refused: Docker Desktop binds it on Windows, where it may be
+# reserved. Only that specific refusal is retried.
+for attempt in 1 2 3 4 5; do
+  SHIPTRACE_DB_PORT=$(free_port)
+  export SHIPTRACE_DB_PORT
+  timeout "$STEP_TIMEOUT" docker compose up --detach --wait --quiet-pull >/dev/null 2>"$app_log" && break
+  if grep -q 'ports are not available' "$app_log" && ((attempt < 5)); then
+    log "database port $SHIPTRACE_DB_PORT refused, retrying"
+    timeout 60 docker compose down --volumes --timeout 5 >/dev/null 2>&1
+    continue
+  fi
   fail "docker compose up did not become healthy within ${STEP_TIMEOUT}s"
+done
 : >"$app_log"
+
+driver=postgresql+psycopg
+host="127.0.0.1:$SHIPTRACE_DB_PORT"
+export SHIPTRACE_DATABASE_URL="$driver://shiptrace_app:$SHIPTRACE_APP_PASSWORD@$host/shiptrace"
+export SHIPTRACE_MIGRATOR_DATABASE_URL="$driver://shiptrace_migrator:$SHIPTRACE_MIGRATOR_PASSWORD@$host/shiptrace"
 
 step="start Uvicorn before migrations"
 log "$step"
-uv run --frozen uvicorn --factory shiptrace.bootstrap.app:create_app \
-  --host 127.0.0.1 --port "$app_port" --timeout-graceful-shutdown 20 --log-level warning \
-  >"$app_log" 2>&1 &
+# The venv's Uvicorn directly, not through `uv run`, so that signals and app_pid reach it.
+.venv/bin/uvicorn --factory shiptrace.bootstrap.app:create_app \
+  --host 127.0.0.1 --port "$app_port" --timeout-graceful-shutdown 20 --log-level info \
+  >>"$app_log" 2>&1 &
 app_pid=$!
 wait_for /healthz 200 "liveness comes up without a schema"
 expect /readyz 503 "readiness refuses an unmigrated database"
@@ -161,11 +177,13 @@ code=$?
 app_pid=""
 # Uvicorn re-raises SIGTERM after a clean shutdown, so 143 (128 + 15) is the success code.
 [[ $code == 143 || $code == 0 ]] || fail "unexpected exit code $code after SIGTERM"
+[[ -s $app_log ]] || fail "no application output, so the secret scan below would prove nothing"
 log "ok  graceful shutdown: exit code $code"
 
 step="check application output for secrets"
 for secret in "$SHIPTRACE_APP_PASSWORD" "$SHIPTRACE_MIGRATOR_PASSWORD" "$SHIPTRACE_ADMIN_PASSWORD"; do
-  grep -qF -- "$secret" "$app_log" && { log "FAILED: a password reached application output"; exit 1; }
+  grep -qF -- "$secret" "$app_log"
+  [[ $? == 1 ]] || { log "FAILED: a password reached application output, or the scan failed"; exit 1; }
 done
 log "ok  no password in application output"
 
