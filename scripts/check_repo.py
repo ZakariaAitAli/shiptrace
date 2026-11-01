@@ -70,8 +70,12 @@ def check_settings() -> None:
                 errors.append(f"settings.json: missing hook script in {hook['command']}")
             if hook.get("onFailure") != "block":
                 errors.append(f"settings.json: guard must fail closed: {hook['command']}")
-    if "sandbox" in settings:
-        errors.append("settings.json: commit sandbox only after local proof (see evaluation doc)")
+    sandbox = settings.get("sandbox")
+    if sandbox and not (
+        sandbox.get("failIfUnavailable") is True
+        and sandbox.get("allowUnsandboxedCommands") is False
+    ):
+        errors.append("settings.json: sandbox must fail closed and forbid unsandboxed retries")
 
 
 def check_documents() -> None:
