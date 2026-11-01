@@ -3,7 +3,7 @@
 Target: **Level 2** for chapters in scope. Baseline: requirement text read from the
 `OWASP/ASVS` repository, `5.0/en/`, on 2026-11-01 (345 requirements in 17 chapters).
 
-**Current status: scoping only. Nothing is implemented, so no requirement is "Pass".** Status
+**Current status: scoping. Only a skeleton exists, and no requirement is "Pass" yet.** Status
 moves to `Pass` only with linked evidence (test, config or scan output). The final assessment
 is a Phase 6 deliverable.
 

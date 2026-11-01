@@ -1,6 +1,7 @@
 # ShipTrace — Threat Model
 
-Status: **Initial, design-time**. No control below is implemented yet. "Verification" names the
+Status: **Design-time, P0.1**. Only settings validation, database roles and health endpoints
+exist; almost no control below is implemented yet. "Verification" names the
 evidence that must exist before a control may be claimed. Revisit at every phase boundary.
 
 Method: STRIDE over the trust boundaries below, scoped to a small internal tool.

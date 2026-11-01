@@ -212,7 +212,8 @@ Each criterion is met only by an automated test or recorded procedure that can f
 **Operations**
 - AC15 Migrations pass upgrade from empty, downgrade round trip and model drift checks.
 - AC16 `/readyz` goes `503` when PostgreSQL stops or the schema is older than the build, stays
-  `200` for a newer schema, and recovers without restart; `/healthz` stays `200`.
+  `200` for a newer schema, and recovers without restart; `/healthz` stays `200`, even with the
+  threadpool exhausted. Revision files are never pruned, because an unknown revision means newer.
 - AC17 On `SIGTERM`, an in-flight request completes and the process exits within budget.
 - AC18 Logs are one JSON object per line carrying a correlation ID that matches the response header and trace.
 - AC19 Backup and restore is run for real, with row counts and event-log integrity verified.

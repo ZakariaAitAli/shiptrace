@@ -58,7 +58,7 @@ was reasoned by the reviewer and author. It is **not tested yet**; P1 concurrenc
 | V18 | 74 legitimate commands against the guard | 13 false positives, mostly read-only `gh`. 10 fixed in the patch. 3 remain, all fail safe: `.env` mentioned in a grep or commit message |
 | V19 | Guard patch, on a copy | 29 new subtests failed first, then passed; 13 of 13 new mutants killed; `git apply --check` passes. **Not applied**: guards change only with the owner |
 | V20 | Test-first: suite run before implementation | Collection failed, as expected |
-| V21 | Sentinel test | **Found a real defect**: `hide_input_in_errors` leaves the password in `ValidationError.errors()`. URL refusals now raise an exception Pydantic does not wrap |
+| V21 | Sentinel test | **Found a real defect**: `hide_input_in_errors` leaves the password in `ValidationError.errors()`. URL refusals now raise an exception Pydantic does not wrap. This fix was **incomplete**; see V25 |
 | V22 | `scripts/verify.sh` | Exit 0. 68 tests on real PostgreSQL 18.6, strict mypy on 27 files, 3 of 3 import contracts. Branch coverage 95%; `bootstrap/migrate.py` shows 0% there and is exercised by V24 instead |
 | V23 | 30 injected defects across code, SQL, layers and types | First run 27 of 30: three tests were too weak. Tests added; second run 30 of 30 |
 | V24 | Real processes: Compose PostgreSQL, `shiptrace-migrate`, Uvicorn, curl | `/readyz` 503 before migration, 200 after, 503 within 13 ms of a database stop, 200 after restart with no app restart; `/healthz` 200 throughout. SIGTERM exit 143 in 169 ms, idle. No password in app output |
@@ -75,3 +75,19 @@ excluded from Ruff.
 - Production `sslmode=verify-full` against a real TLS server: only the setting check is tested.
 - Bootstrap script on RDS: only tested on the Docker image.
 - `gh actions-lock` and `gh attestation` with local gh 2.46.0.
+
+### Independent review of P0.1
+
+Project agents `security-reviewer` and `migration-reviewer` reviewed the committed slice. Findings
+were reproduced first; see the phase report commit for the fixes.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V25 | Reproduction before fixing | A password misread as a port appeared in plain `str(error)`, the text a startup crash prints. A failed timeout check leaked through `errors()`. `?user=shiptrace_admin` was accepted. All confirmed against the committed code |
+| V26 | New tests seen failing, then fixes | 8 failed and one module failed to import before the fixes. Role check is now exact, URL query is an allowlist, migrator URL is validated, `/healthz` is async, a busy readiness probe fails closed |
+
+| V27 | Repeat after fixes | 93 tests pass. Defect injection repeated with 16 new mutants: 42 of 42 caught. Real-process run repeated with identical results. A built wheel contains the migrations, now a gate |
+
+Not verified from this review: `transaction_per_migration` behaviour (no test can show it with one
+migration); `tcp_user_timeout` under a real network blackhole, since Docker's proxy acknowledges
+locally; log suppression in the bootstrap script; bootstrap script on RDS.
