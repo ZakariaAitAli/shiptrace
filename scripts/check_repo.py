@@ -9,6 +9,23 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CLAUDE = ROOT / ".claude"
 EDIT_TOOLS = {"Write", "Edit", "NotebookEdit", "Agent"}
+REQUIRED_GATES = (
+    "scripts/check_repo.py",
+    "scripts/check_history.py",
+    "scripts/test_commit_msg.py",
+    "scripts/test_check_history.py",
+    "scripts/test_pre_commit.py",
+    ".claude/hooks/tests/test_hooks.py",
+    "uv lock --check",
+    "ruff format --check",
+    "ruff check",
+    "uv run --frozen mypy",
+    "lint-imports",
+    "uv build --wheel",
+    "pytest --cov",
+    "--cov-fail-under",
+    "scripts/smoke.sh",
+)
 errors: list[str] = []
 
 
@@ -72,7 +89,8 @@ def check_settings() -> None:
                 errors.append(f"settings.json: guard must fail closed: {hook['command']}")
     sandbox = settings.get("sandbox")
     if sandbox and not (
-        sandbox.get("failIfUnavailable") is True
+        sandbox.get("enabled") is True
+        and sandbox.get("failIfUnavailable") is True
         and sandbox.get("allowUnsandboxedCommands") is False
     ):
         errors.append("settings.json: sandbox must fail closed and forbid unsandboxed retries")
@@ -81,6 +99,13 @@ def check_settings() -> None:
         errors.append("settings.json: every sandbox exclusion must need approval per run")
     if excluded & set(permissions.get("allow", [])):
         errors.append("settings.json: a sandbox exclusion must not be auto-allowed")
+
+
+def check_verify_script() -> None:
+    script = (ROOT / "scripts/verify.sh").read_text()
+    for gate in REQUIRED_GATES:
+        if gate not in script:
+            errors.append(f"scripts/verify.sh is missing a gate: {gate}")
 
 
 def check_documents() -> None:
@@ -104,7 +129,7 @@ def check_documents() -> None:
 
 
 def main() -> int:
-    for check in (check_skills, check_agents, check_settings, check_documents):
+    for check in (check_skills, check_agents, check_settings, check_verify_script, check_documents):
         check()
     for error in errors:
         print(f"ERROR: {error}", file=sys.stderr)

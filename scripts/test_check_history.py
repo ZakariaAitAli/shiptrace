@@ -6,13 +6,16 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from check_history import FIELD, RECORD, violations
+from check_history import FIELD, OWNER_EMAIL, OWNER_KEY_ID, RECORD, violations
 
 GOOD = "chore(repo): add a thing\n"
 
 
-def log(*entries: tuple[str, str]) -> str:
-    return "".join(f"abcdef1{FIELD}{sig}{FIELD}{body}{RECORD}\n" for sig, body in entries)
+def log(*entries: tuple[str, str], key: str = OWNER_KEY_ID, email: str = OWNER_EMAIL) -> str:
+    return "".join(
+        f"abcdef1{FIELD}{sig}{FIELD}{key}{FIELD}{email}{FIELD}{body}{RECORD}\n"
+        for sig, body in entries
+    )
 
 
 class History(unittest.TestCase):
@@ -25,7 +28,15 @@ class History(unittest.TestCase):
     def test_bad_signature_fails(self) -> None:
         for status in ("B", "X", "Y", "R"):
             with self.subTest(status=status):
-                self.assertEqual(len(violations(log((status, GOOD)))), 1)
+                self.assertTrue(violations(log((status, GOOD))))
+
+    def test_signature_from_another_key_fails(self) -> None:
+        for status in ("G", "E"):
+            with self.subTest(status=status):
+                self.assertTrue(violations(log((status, GOOD), key="0123456789ABCDEF")))
+
+    def test_another_author_fails(self) -> None:
+        self.assertTrue(violations(log(("G", GOOD), email="someone@example.com")))
 
     def test_nonconforming_message_fails(self) -> None:
         self.assertTrue(violations(log(("G", "updates\n"))))
