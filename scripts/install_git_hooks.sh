@@ -3,5 +3,6 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 ln -sf ../../scripts/commit_msg.py .git/hooks/commit-msg
-chmod +x scripts/commit_msg.py
-echo "installed commit-msg hook"
+ln -sf ../../scripts/pre_commit.py .git/hooks/pre-commit
+chmod +x scripts/commit_msg.py scripts/pre_commit.py
+echo "installed commit-msg and pre-commit hooks"
