@@ -120,7 +120,7 @@ any non-zero exit, and one violation failed before reaching the step it claimed 
 | V37 | Forced smoke failures: broken migration, readiness never recovering, app crash, outage reported ready, broken bootstrap SQL, total timeout, signal mid-run, missing Docker | Each gave the expected exit code (1, 130 or 2) and left 0 containers and 0 volumes |
 | V38 | Fresh `git clone`, `uv sync --locked`, `scripts/verify.sh`; smoke 5 times; integration 10 times | Exit 0. 97 tests, 95% coverage, mypy clean on 28 files, 3 of 3 contracts. Smoke 5 of 5. Integration 10 of 10. Nothing left behind. Superseded by the one-command run below |
 
-Guard patch v3 is `1865b1f0550403ae…` by SHA-256, and `git apply --check` passes at this commit.
+Guard patch v3 was later revised; the final hash is below.
 
 ### Not verified at P0.2
 
@@ -172,3 +172,14 @@ removal passing `check_repo`, and unverified `.git/commondir`. Outcomes:
 
 Patch v3 after these changes: 83 new subtests failed first then passed, 19 of 19 mutants killed,
 and the live clone test was repeated.
+
+### Final evidence, at commit 353210c
+
+| ID | Check | Outcome |
+|---|---|---|
+| V39 | `git clone`, then only `scripts/verify.sh`, with no prior sync | Exit 0. 97 tests, 95% coverage, mypy clean on 28 files, 3 of 3 contracts |
+| V40 | Smoke 3 times from that clone | 3 of 3. 0 containers and 0 volumes left |
+| V41 | `scripts/check_gates.py` with a full-gate baseline | Baseline exit 0. 25 of 25 caught, each with exit 1 and its marker |
+
+Guard patch v3 is `8998d3024aaa3753…` by SHA-256, and `git apply --check` passes. It is not applied.
+Only log text changed after this evidence. No independent review ran after the last fixes.
