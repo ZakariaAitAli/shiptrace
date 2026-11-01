@@ -25,7 +25,8 @@ PROTECTED_GLOBS = {
 ALLOWED_NAMES = {".env.example"}
 # Run or read by commands outside the sandbox, so they change only with the owner.
 TRUSTED_EXECUTED = re.compile(
-    r"^(scripts/.+|compose[\w.-]*\.ya?ml|pyproject\.toml|\.git/.+)$"
+    r"^(scripts/.+|compose[\w.-]*\.ya?ml|pyproject\.toml|\.git/.+|\.venv/.+"
+    r"|\.gitleaks\.toml|uv\.toml|\.python-version)$"
 )
 
 SECRET_PATTERNS = {
@@ -52,8 +53,9 @@ def is_tracked_migration(path: Path, cwd: str) -> bool:
 def path_problem(raw_path: str, cwd: str) -> str | None:
     if not raw_path:
         return None
-    root = Path(os.path.abspath(cwd))
-    path = Path(os.path.normpath(root / raw_path))  # So x/../ cannot hide a protected path.
+    # Hooks run outside the sandbox: resolve links, and never trust the payload's directory.
+    root = Path(os.path.realpath(os.environ.get("CLAUDE_PROJECT_DIR") or cwd))
+    path = Path(os.path.realpath(Path(os.path.abspath(cwd)) / raw_path))
     name = PurePosixPath(path.as_posix()).name
     if name in ALLOWED_NAMES:
         return None
@@ -66,7 +68,7 @@ def path_problem(raw_path: str, cwd: str) -> str | None:
         return f"{name}: agent guardrails change only with the owner, who edits them directly"
     if path.is_relative_to(root) and TRUSTED_EXECUTED.search(path.relative_to(root).as_posix()):
         return f"{name}: runs outside the sandbox, so it changes only with the owner"
-    if is_tracked_migration(path, cwd):
+    if is_tracked_migration(path, str(root)):
         return f"{name}: applied migrations are immutable, add a new one"
     return None
 

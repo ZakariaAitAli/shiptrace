@@ -158,6 +158,15 @@ VIOLATIONS = (
         "API does not touch database libraries BROKEN",
     ),
     Violation(
+        "a stray mypy.ini cannot disable checks",
+        lambda clone: (
+            create("mypy.ini", "[mypy]\nignore_errors = True\n")(clone),
+            replace(HEALTH, 'return {"status": "ok"}', 'return {"status": 1}')(clone),
+        )[0],
+        (*UV, "mypy", "--config-file", "pyproject.toml"),
+        "error:",
+    ),
+    Violation(
         "unit test",
         replace(
             READINESS,
@@ -173,7 +182,7 @@ VIOLATIONS = (
             MIGRATION, 'op.execute("GRANT SELECT ON alembic_version TO shiptrace_app")', "pass"
         ),
         (*UV, "pytest", "tests/integration", "-q", "-x"),
-        "tests/integration/",
+        "FAILED tests/integration/test_database_init.py::test_upgrade_downgrade_round_trip",
     ),
     Violation(
         "stale lockfile",

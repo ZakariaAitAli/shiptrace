@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""PostToolUse hook: format and lint an edited Python file. No-op until P0 adds pyproject.toml."""
+"""PostToolUse hook: format and lint an edited Python file.
+
+Hooks run outside the sandbox, so this must never run anything the sandbox can write. It uses only
+the project's own protected .venv, and never trusts the payload's working directory.
+"""
 
 import json
-import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,17 +15,18 @@ from pathlib import Path
 def main() -> None:
     payload = json.load(sys.stdin)
     raw_path = payload.get("tool_input", {}).get("file_path", "")
-    cwd = Path(payload.get("cwd", "."))
-    if not raw_path.endswith(".py") or ".claude/" in raw_path:
+    project = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not project or not raw_path.endswith(".py") or ".claude/" in raw_path:
         return
-    if not (cwd / raw_path).resolve().is_relative_to(cwd.resolve()):
-        return
-    if not (cwd / "pyproject.toml").exists() or shutil.which("uv") is None:
+    root = Path(project).resolve()
+    cwd = Path(payload.get("cwd", ".")).resolve()
+    ruff = root / ".venv/bin/ruff"
+    if cwd != root or not (root / raw_path).resolve().is_relative_to(root) or not ruff.exists():
         return
     for args in (["format", raw_path], ["check", "--fix", raw_path]):
         result = subprocess.run(
-            ["uv", "run", "--frozen", "ruff", *args],
-            cwd=cwd,
+            [str(ruff), *args, "--config", str(root / "pyproject.toml")],
+            cwd=root,
             capture_output=True,
             text=True,
             timeout=60,

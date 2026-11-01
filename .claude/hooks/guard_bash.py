@@ -6,6 +6,7 @@ is out of its reach. Any error while checking blocks the command.
 """
 
 import json
+import os
 import re
 import shlex
 import sys
@@ -35,6 +36,7 @@ PROTECTED_TARGET = (
 SHELL_WRITE = re.compile(rf"(>>?\s*|\btee\s+(-\S+\s+)*)({PROTECTED_TARGET})")
 SED_IN_PLACE = re.compile(rf"\bsed\b[^|;&]*\s-i\S*[^|;&]*\s({PROTECTED_TARGET})")
 
+LEAVES_SANDBOX = re.compile(r"(^|[;&|]\s*)(git\s+commit\b|(\./)?scripts/(verify|smoke)\.sh\b)")
 SHELL_KEYWORDS = {"if", "then", "elif", "else", "for", "while", "until", "do", "!", "{"}
 WRAPPERS = {"sudo", "command", "env", "time", "nohup", "nice", "exec", "xargs", "timeout"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
@@ -126,7 +128,7 @@ def check_git(args: list[str]) -> str | None:
         return "git clean -f"
     if subcommand == "restore" and not {"--staged", "-S"} & set(rest):
         return "git restore discards working changes"
-    if subcommand == "checkout" and "--" in rest:
+    if subcommand == "checkout" and ("--" in rest or "." in rest):
         return "git checkout -- discards working changes"
     if subcommand == "config" and "--global" in rest:
         return "git config changing global settings or hooks"
@@ -199,7 +201,7 @@ def check_rm(args: list[str]) -> str | None:
     if "r" not in short_flags.lower() and "--recursive" not in args:
         return None
     for target in (a for a in args if not a.startswith("-")):
-        cleaned = target.rstrip("/") or "/"
+        cleaned = os.path.normpath(target)
         parts = cleaned.split("/")
         if cleaned.startswith("/tmp/") and ".." not in parts:
             continue
@@ -279,10 +281,23 @@ def check_command(command: str, depth: int = 0) -> str | None:
     return None
 
 
+def check_location(command: str, cwd: str | None) -> str | None:
+    """Exclusions match text, so a nested directory could otherwise supply what they execute."""
+    project = os.environ.get("CLAUDE_PROJECT_DIR")
+    if not project or not cwd or not LEAVES_SANDBOX.search(command):
+        return None
+    if os.path.realpath(cwd) != os.path.realpath(project):
+        return "commands that leave the sandbox run only from the project root"
+    if "git" in command and os.path.lexists(os.path.join(project, ".git/commondir")):
+        return ".git/commondir would redirect a commit outside the sandbox"
+    return None
+
+
 def main() -> None:
     try:
-        command = json.load(sys.stdin).get("tool_input", {}).get("command", "")
-        reason = check_command(command)
+        payload = json.load(sys.stdin)
+        command = payload.get("tool_input", {}).get("command", "")
+        reason = check_command(command) or check_location(command, payload.get("cwd"))
     except Exception as error:  # noqa: BLE001 - a broken guard must block, never allow.
         reason = f"guard error ({type(error).__name__})"
     if reason:

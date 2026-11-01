@@ -57,9 +57,10 @@ def forbidden_paths(files: list[tuple[str, str]]) -> list[str]:
 
 def secrets(_: list[tuple[str, str]]) -> list[str]:
     diff = git("diff", "--cached", "-U0", "--no-color", "--no-ext-diff", "--text").stdout
-    found, current = [], "?"
+    found, current, previous = [], "?", ""
     for line in diff.splitlines():
-        if line.startswith("+++ "):
+        header, previous = line.startswith("+++ ") and previous.startswith("--- "), line
+        if header:
             current = line.removeprefix("+++ b/")
         elif line.startswith("+") and any(re.search(p, line) for p in SECRET_PATTERNS):
             found.append(f"{current}: an added line looks like a secret")  # Never echo the line.
@@ -72,7 +73,7 @@ def applied_migrations(files: list[tuple[str, str]]) -> list[str]:
     return [
         f"{path}: an applied migration is immutable, add a new one"
         for status, path in files
-        if status in {"M", "D"} and MIGRATIONS in path and path.endswith(".py")
+        if status in {"M", "D", "T"} and MIGRATIONS in path and path.endswith(".py")
     ]
 
 

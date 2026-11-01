@@ -13,6 +13,10 @@
       "Bash(uv run --frozen pytest tests/unit *)"
     ],
     "deny": [
+      "Read(~/.gnupg/**)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.netrc)",
+      "Read(~/.pgpass)",
       "Read(**/.env)",
       "Read(**/.env.local)",
       "Read(**/.env.production)",
@@ -111,7 +115,9 @@
         "uv.lock",
         ".venv",
         ".git/config",
-        ".gitleaks.toml"
+        ".gitleaks.toml",
+        "uv.toml",
+        ".python-version"
       ]
     },
     "network": {

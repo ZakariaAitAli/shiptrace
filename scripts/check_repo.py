@@ -31,6 +31,8 @@ REQUIRED_DENY_WRITE = {
     ".venv",
     ".git/config",
     ".gitleaks.toml",
+    "uv.toml",
+    ".python-version",
 }
 ALLOWED_DOMAINS = {"pypi.org", "files.pythonhosted.org"}
 ALLOWED_EXCLUSIONS = {"scripts/verify.sh", "scripts/smoke.sh", "git commit *"}
@@ -42,12 +44,12 @@ REQUIRED_GATES = (
     "scripts/test_pre_commit.py",
     ".claude/hooks/tests/test_hooks.py",
     "uv lock --check",
-    "ruff format --check",
-    "ruff check",
-    "uv run --frozen mypy",
+    "ruff format --check --config pyproject.toml",
+    "ruff check --config pyproject.toml",
+    "mypy --config-file pyproject.toml",
     "lint-imports --config pyproject.toml",
     "uv build --wheel",
-    "pytest --cov",
+    "pytest -c pyproject.toml --cov --cov-config=pyproject.toml",
     "--cov-fail-under",
     "scripts/smoke.sh",
 )

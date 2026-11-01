@@ -179,6 +179,11 @@ class PreCommit(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("uv", result.stderr)
 
+    def test_added_line_that_looks_like_a_header_is_scanned(self) -> None:
+        secret = "ghp_" + "f" * 36
+        self.repo.stage("notes.txt", f"++ b/{secret}\n")
+        self.assert_blocked("looks like a secret")
+
     def test_placeholder_urls_are_allowed(self) -> None:
         self.repo.stage("notes.txt", "postgresql://app:<password>@db/shiptrace\n")
         self.assert_allowed()

@@ -29,13 +29,13 @@ echo "==> lockfile is current"
 uv lock --check
 
 echo "==> formatting"
-uv run --frozen ruff format --check .
+uv run --frozen ruff format --check --config pyproject.toml .
 
 echo "==> lint and static security rules"
-uv run --frozen ruff check .
+uv run --frozen ruff check --config pyproject.toml .
 
 echo "==> types"
-uv run --frozen mypy
+uv run --frozen mypy --config-file pyproject.toml
 
 echo "==> import boundaries"
 uv run --frozen lint-imports --config pyproject.toml
@@ -49,13 +49,13 @@ python3 -I -m zipfile -l "$wheel_dir"/*.whl | grep -q 'persistence/migrations/ve
 
 if [[ $mode == --fast ]]; then
   echo "==> unit tests"
-  uv run --frozen pytest tests/unit -q
+  uv run --frozen pytest -c pyproject.toml tests/unit -q
   echo "==> FAST GATES PASSED (no integration or smoke tests ran)"
   exit 0
 fi
 
 echo "==> tests with coverage (real PostgreSQL)"
-uv run --frozen pytest --cov --cov-branch --cov-report=term-missing --cov-fail-under=90 -q
+uv run --frozen pytest -c pyproject.toml --cov --cov-config=pyproject.toml --cov-branch --cov-report=term-missing --cov-fail-under=90 -q
 
 echo "==> real-process smoke test"
 scripts/smoke.sh

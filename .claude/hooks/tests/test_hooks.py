@@ -2,6 +2,7 @@
 """Runs each hook as Claude Code does: JSON on stdin, decision by exit code."""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,10 @@ from pathlib import Path
 HOOKS = Path(__file__).resolve().parents[1]
 
 
-def run_hook(hook: str, payload: dict) -> subprocess.CompletedProcess:
+def run_hook(hook: str, payload: dict, project: str = "") -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDE_PROJECT_DIR"}
+    if project:
+        env["CLAUDE_PROJECT_DIR"] = project
     return subprocess.run(
         [sys.executable, "-I", str(HOOKS / hook)],
         input=json.dumps(payload),
@@ -19,6 +23,7 @@ def run_hook(hook: str, payload: dict) -> subprocess.CompletedProcess:
         text=True,
         timeout=15,
         check=False,
+        env=env,
     )
 
 
@@ -87,6 +92,9 @@ class GuardBash(unittest.TestCase):
         "grep TOKEN .env.production",
         "cat ~/.config/gh/hosts.yml",
         "echo 'unterminated",
+        "rm -rf ./.git/objects",
+        "rm -rf a/../.git",
+        "git checkout .",
         # Security review of v2.
         "git commit -aSOTHERKEY -m x",
         "git -c commit.gpgSign=false commit -m x",
@@ -316,6 +324,10 @@ class GuardFiles(unittest.TestCase):
             "scripts/install_git_hooks.sh",
             "compose.yaml",
             "compose.override.yaml",
+            ".venv/bin/ruff",
+            ".gitleaks.toml",
+            "uv.toml",
+            ".python-version",
             "pyproject.toml",
             "scripts/check_repo.py",
             "scripts/x/../verify.sh",
@@ -355,6 +367,31 @@ class GuardFiles(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(self.exit_code("a.py", text), 0)
 
+    def test_symlink_cannot_reach_a_protected_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            (root / "scripts").mkdir()
+            (root / "scripts/check_repo.py").write_text("x")
+            (root / "src").mkdir()
+            (root / "src/a.py").symlink_to("../scripts/check_repo.py")
+            payload = {"cwd": str(root), "tool_input": {"file_path": "src/a.py", "content": "x"}}
+            self.assertEqual(run_hook("guard_files.py", payload, str(root)).returncode, 2)
+
+    def test_nested_repository_is_not_consulted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            nested = root / "tests/x"
+            versions = nested / "migrations/versions"
+            versions.mkdir(parents=True)
+            target = versions / "a.py"
+            target.write_text("x")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            subprocess.run(["git", "init", "-q"], cwd=nested, check=True)
+            subprocess.run(["git", "config", "core.fsmonitor", f"touch {root}/ran"], cwd=nested, check=True)
+            payload = {"cwd": str(nested), "tool_input": {"file_path": str(target), "content": "x"}}
+            run_hook("guard_files.py", payload, str(root))
+            self.assertFalse((root / "ran").exists())
+
     def test_edit_tool_new_string_is_scanned(self) -> None:
         payload = {
             "cwd": ".",
@@ -372,6 +409,39 @@ class GuardFiles(unittest.TestCase):
             subprocess.run(["git", "add", "."], cwd=repo, check=True)
             self.assertEqual(self.exit_code(str(tracked), cwd=repo), 2)
             self.assertEqual(self.exit_code(str(versions / "0002_new.py"), cwd=repo), 0)
+
+
+class Location(unittest.TestCase):
+    """Commands that leave the sandbox run only from the project root."""
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.project = str(Path(directory.name).resolve())
+        self.nested = Path(self.project, "tests/x")
+        self.nested.mkdir(parents=True)
+        Path(self.project, ".git").mkdir()
+
+    def exit_code(self, command: str, cwd: str) -> int:
+        payload = {"cwd": cwd, "tool_input": {"command": command}}
+        return run_hook("guard_bash.py", payload, self.project).returncode
+
+    def test_excluded_commands_are_refused_elsewhere(self) -> None:
+        for command in ("git commit -m x", "scripts/verify.sh", "scripts/smoke.sh", "./scripts/verify.sh"):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, str(self.nested)), 2)
+
+    def test_excluded_commands_run_at_the_root(self) -> None:
+        for command in ("git commit -m x", "scripts/verify.sh", "scripts/smoke.sh"):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, self.project), 0)
+
+    def test_ordinary_commands_run_anywhere(self) -> None:
+        self.assertEqual(self.exit_code("git status", str(self.nested)), 0)
+
+    def test_redirected_repository_cannot_commit(self) -> None:
+        Path(self.project, ".git/commondir").write_text("/tmp/elsewhere\n")
+        self.assertEqual(self.exit_code("git commit -m x", self.project), 2)
 
 
 class ReadOnlyBash(unittest.TestCase):
@@ -430,6 +500,34 @@ class ReadOnlyBash(unittest.TestCase):
 
 
 class FormatPython(unittest.TestCase):
+    def fake_project(self, root: Path) -> Path:
+        tool = root / ".venv/bin/ruff"
+        tool.parent.mkdir(parents=True)
+        Path(root, "pyproject.toml").write_text("")
+        marker = root / "ran"
+        tool.write_text(f'#!/bin/sh\necho "$@" >> "{marker}"\n')
+        tool.chmod(0o755)
+        return marker
+
+    def test_runs_only_the_project_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            marker = self.fake_project(root)
+            payload = {"cwd": str(root), "tool_input": {"file_path": str(root / "a.py")}}
+            self.assertEqual(run_hook("format_python.py", payload, str(root)).returncode, 0)
+            self.assertTrue(marker.exists())
+
+    def test_never_runs_a_nested_project_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self.fake_project(root)
+            nested = root / "tests/x"
+            nested.mkdir(parents=True)
+            marker = self.fake_project(nested)
+            payload = {"cwd": str(nested), "tool_input": {"file_path": "a.py"}}
+            self.assertEqual(run_hook("format_python.py", payload, str(root)).returncode, 0)
+            self.assertFalse(marker.exists())
+
     def test_ignores_files_outside_the_project(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, "pyproject.toml").write_text("")
