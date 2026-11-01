@@ -1,6 +1,6 @@
 # ADR-0011: Readiness and schema compatibility
 
-Status: Proposed · Date: 2026-11-01
+Status: Accepted by the owner · Date: 2026-11-01
 
 **Context.** `/readyz` compares the database revision with the revisions this build knows. It must
 stay ready during expand/contract rollouts, and refuse a schema the build cannot use.

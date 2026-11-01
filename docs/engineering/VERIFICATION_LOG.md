@@ -183,3 +183,16 @@ and the live clone test was repeated.
 
 Guard patch v3 is `8998d3024aaa3753…` by SHA-256, and `git apply --check` passes. It is not applied.
 Only log text changed after this evidence. No independent review ran after the last fixes.
+
+## After guard patch v3 was applied by the owner, 2026-11-01
+
+Commit `a0ee681` holds the applied guards and removes the obsolete proposal.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V42 | Applied files against the reviewed patch | Patch hash `8998d3024aaa3753…` from `git show`, and it reverses cleanly, so the applied change is the reviewed one |
+| V43 | Live probes from the real session sandbox | 16 protected write targets blocked, including `.git/hooks`, `$HOME` and `/etc`. `src/` and `$TMPDIR` writable. `.ssh`, `.aws`, `.config/gh` and `.gnupg` show 0 entries. PyPI reachable; example.com, github.com and a direct socket blocked. Docker unreachable. `git status` works |
+| V44 | Opt-out parameter on a harmless command | Refused by the auto-mode classifier before reaching the sandbox, so the setting itself was not observed working. The session's configuration states it is disabled |
+| V45 | `scripts/verify.sh` through its exclusion, main checkout | Exit 0 by final output: 97 tests, 95% coverage, smoke passed |
+| V46 | Commit through the `git commit` exclusion | Hooks ran. Correct identity and key ID, no attribution. Status `E` inside the sandbox, so the owner must confirm a good signature |
+| V47 | Guard refused an edit to `scripts/check_repo.py` | Correct by design, and a flaw in it: the owner's requested change could not be made. Supplied as an owner patch; 11 of 11 rule removals caught in a throwaway clone |

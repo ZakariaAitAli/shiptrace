@@ -83,5 +83,5 @@ deploy**. This trades completeness for availability of the system people care ab
 6. T26: a production-bound token can forge rollbacks until revoked.
 7. ADR-0011: `/readyz` cannot detect a rollback past a contract migration. No such migration exists,
    and none is allowed until the fix lands; older images stay exposed even then.
-8. T23: until guard patch v3 is applied, the signing policy is written down but not enforced for
-   the agent, and no OS sandbox is active. History is checked afterwards by `check_history.py`.
+8. T23: the guards and sandbox are active, but an approved full run still executes agent-edited
+   code outside the sandbox, and signatures cannot be verified inside it.

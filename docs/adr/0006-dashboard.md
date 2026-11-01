@@ -1,6 +1,6 @@
 # ADR-0006: Server-rendered dashboard with separate named accounts
 
-Status: Proposed, awaiting owner approval · Date: 2026-11-01
+Status: Accepted by the owner, subject to security tests during P2 · Date: 2026-11-01
 
 **Context.** A minimal, read-only web UI. The owner rejected signing in with API tokens: machine
 credentials and human sign-in must stay separate. Enterprise IAM and RBAC are out of scope.

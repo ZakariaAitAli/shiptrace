@@ -36,8 +36,9 @@ Evidence is in the verification log, entries V14 to V28.
 Pre-commit hook, repeatable smoke script, gate-violation proof and readiness review are done. See
 the verification log, entries V29 to V38.
 
-**Open:** the owner inspects and applies `docs/engineering/proposals/guard-update-v3.patch`. P0 is
-not complete until then, because enforcement of the signing policy and the sandbox depend on it.
+Guard patch v3 is applied and committed. **Open:** the owner applies the patch that makes
+`check_repo.py` enforce the sandbox, because `scripts/` is now protected. P1 waits for an independent
+P0 PASS.
 
 ## Standing obligation
 
@@ -53,6 +54,6 @@ then contract migrations are forbidden.
 | D3 | First commit of the foundation | **Done, signed** | Worktrees and hook protection for tracked migrations need history |
 | D4 | Enable OS sandbox | Apply guard patch v3, which holds the proven config | Turns the agent guardrails into a real boundary |
 | D5 | Accepted MVP risks (eight) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
-| D6 | Dashboard accounts (ADR-0006) | Approve before P2 | Replaces the rejected token sign-in |
-| D8 | Commit email | Decide before any push | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
+| D6 | Dashboard accounts (ADR-0006) | **Accepted**, subject to P2 security tests | Replaces the rejected token sign-in |
+| D8 | Commit email | **Accepted as public** by the owner | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
 | D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The guard correctly stopped me checking |

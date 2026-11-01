@@ -46,6 +46,12 @@ active** until the owner applies `docs/engineering/proposals/guard-update-v3.pat
   `uv run` rebuilding `.venv`, while the smoke test's explicit `uv sync` installs only from the
   protected lockfile. Dependency changes become owner actions.
 
+**Practical consequences, observed once active.** `scripts/` being protected means changes to gates
+and repository checks are owner patches, even when the owner has asked for them. Docker gates outside
+the two named scripts, such as `check_gates.py`, are owner-run. Inside the sandbox, `git status` lists
+its `/dev/null` placeholders as untracked, so stage explicit paths and never `git add -A`. Signatures
+read `E` there, because `~/.gnupg` is hidden, so a good signature can only be confirmed outside it.
+
 **What remains.** Approval is the only control over the full run. `scripts/verify.sh` runs `src/`
 and `tests/`, which the agent can edit, with full access, so approving it means trusting that code.
 The stronger answer is running integration tests in a container with no Docker socket and no home
