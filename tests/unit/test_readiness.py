@@ -41,6 +41,12 @@ def test_ready_when_schema_is_newer_than_build() -> None:
     assert is_ready(FakeProbe("z-from-a-newer-release"), EXPECTED)
 
 
+def test_rollback_past_a_contract_migration_is_not_detected_yet() -> None:
+    """Records a known gap, not a wish: ADR-0011 forbids contract migrations until it is closed."""
+    old_build = SchemaExpectation(head="a", known=frozenset({"a"}))
+    assert is_ready(FakeProbe("contract-migration-this-build-cannot-use"), old_build)
+
+
 def test_not_ready_without_a_schema() -> None:
     assert not is_ready(FakeProbe(None), EXPECTED)
 

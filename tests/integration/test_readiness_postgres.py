@@ -54,6 +54,35 @@ def test_ready_when_schema_is_newer_than_build(migrated_database: Database) -> N
         assert client.get("/readyz").status_code == 200
 
 
+def test_not_ready_when_version_table_is_ambiguous(
+    migrated_database: Database, engine_for: EngineFor
+) -> None:
+    migrator = engine_for(migrated_database.migrator_url)
+    with migrator.begin() as connection:
+        connection.execute(text("INSERT INTO alembic_version VALUES ('extra')"))
+    try:
+        with app_client(migrated_database) as client:
+            assert client.get("/readyz").status_code == 503
+    finally:
+        with migrator.begin() as connection:
+            connection.execute(text("DELETE FROM alembic_version WHERE version_num = 'extra'"))
+
+
+def test_not_ready_when_version_table_is_empty(
+    migrated_database: Database, engine_for: EngineFor
+) -> None:
+    migrator = engine_for(migrated_database.migrator_url)
+    head = expected_schema().head
+    with migrator.begin() as connection:
+        connection.execute(text("DELETE FROM alembic_version"))
+    try:
+        with app_client(migrated_database) as client:
+            assert client.get("/readyz").status_code == 503
+    finally:
+        with migrator.begin() as connection:
+            connection.execute(text("INSERT INTO alembic_version VALUES (:head)"), {"head": head})
+
+
 def test_shutdown_closes_database_connections(
     migrated_database: Database, engine_for: EngineFor
 ) -> None:
