@@ -237,3 +237,14 @@ The Docker gates have not run on this patch, so V48 to V50 no longer describe th
 | V60 | `scripts/verify.sh --fast` after restart, no manually set variables | Exit 0 at `16457ff`, with the setting inherited from project settings: 76 unit tests, mypy clean on 28 files, 3 of 3 contracts. Docker gates did not run |
 
 V48 to V50 describe `b7ceec8`. The external gate must run again on the final commit.
+
+## External P0 gate on the final code, run by the owner
+
+Run by the owner outside the sandbox on `1822839`, then pushed. Results are as the owner reported
+them; Claude Code did not run or observe this execution.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V61 | `scripts/p0_gate.sh`: clean checkout and clone, `scripts/verify.sh` | 97 tests passed, 95% coverage, 3 of 3 architecture contracts |
+| V62 | Smoke three times; `scripts/check_gates.py` | Smoke 3 of 3. 34 of 34 deliberate violations detected |
+| V63 | Every commit reachable from HEAD must be `G` | 47 of 47 valid. `P0 GATE: ALL STEPS PASSED`, exit 0. Supersedes V48 to V50, and closes the signature gap in V46 for the commits since then |
