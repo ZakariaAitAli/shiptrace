@@ -7,6 +7,8 @@ for the current phase. Read before changing behavior:
 ## Commands
 
 - All gates, needs Docker: `scripts/verify.sh`
+- Gates that need no Docker, safe in the sandbox: `scripts/verify.sh --fast`
+- Real-process smoke test: `scripts/smoke.sh`
 - Unit tests only: `uv run --frozen pytest tests/unit -q`
 - Check Claude config and docs links only: `python3 -I scripts/check_repo.py`
 - Test hooks: `python3 -I .claude/hooks/tests/test_hooks.py`
@@ -46,7 +48,8 @@ Never touch unrelated repositories, credentials or cloud accounts.
 ## Commits
 
 Format: `<type>(<scope>): <description>` per Conventional Commits 1.0.0. `scripts/commit_msg.py`
-enforces this as a `commit-msg` hook; install it once with `scripts/install_git_hooks.sh`.
+enforces this as a `commit-msg` hook, and
+`scripts/pre_commit.py` checks staged content. Install both once with `scripts/install_git_hooks.sh`.
 
 - Types: `feat fix refactor test docs chore ci build perf security`. Lowercase type and scope.
 - Imperative, concise description, under 72 characters. One logical change per commit.

@@ -12,6 +12,7 @@ paths:
   tables: it needs an `UPDATE` privilege the runtime role must not have.
 - Never edit an applied migration or delete a revision file: `/readyz` reads an unknown revision
   as newer. Each new one needs a working `downgrade`, or a stated reason.
-- Follow expand/contract, so the previous release keeps working on the new schema.
+- Follow expand/contract, so the previous release keeps working on the new schema. Contract
+  migrations are forbidden until ADR-0011 step 2 lands.
 - Every migration: add explicit grants, and set `lock_timeout` for operations on large tables.
 - Use `/migration-review` for any schema change.
