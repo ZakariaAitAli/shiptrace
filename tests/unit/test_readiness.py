@@ -1,5 +1,6 @@
 """Readiness rules, including the expand/contract cases that a naive equality check would break."""
 
+import threading
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -82,3 +83,49 @@ def test_result_is_refreshed_after_ttl() -> None:
     clock.now += 1.0
     assert cached() is False
     assert check.calls == 2
+
+
+class BlockingCheck:
+    def __init__(self) -> None:
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self) -> bool:
+        self.entered.set()
+        self.release.wait(5)
+        return True
+
+
+def run_while_first_call_blocks(cached: CachedCheck, check: BlockingCheck) -> list[bool]:
+    worker = threading.Thread(target=cached)
+    worker.start()
+    assert check.entered.wait(5)
+    results: list[bool] = []
+    caller = threading.Thread(target=lambda: results.append(cached()))
+    caller.start()
+    caller.join(1)
+    blocked = caller.is_alive()
+    check.release.set()
+    worker.join(5)
+    caller.join(5)
+    assert not blocked, "second caller queued behind the running probe"
+    return results
+
+
+def test_concurrent_caller_does_not_queue_and_fails_closed() -> None:
+    check = BlockingCheck()
+    assert run_while_first_call_blocks(CachedCheck(check, ttl_seconds=1.0), check) == [False]
+
+
+def test_expired_result_is_not_served_while_probe_is_running() -> None:
+    clock = FakeClock()
+    results = iter([True])
+    check = BlockingCheck()
+
+    def first_then_block() -> bool:
+        return next(results, None) or check()
+
+    cached = CachedCheck(first_then_block, ttl_seconds=1.0, clock=clock)
+    assert cached() is True
+    clock.now += 2
+    assert run_while_first_call_blocks(cached, check) == [False]

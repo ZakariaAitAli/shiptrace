@@ -50,9 +50,16 @@ class CachedCheck:
         self._result = False
 
     def __call__(self) -> bool:
-        with self._lock:
-            now = self._clock()
-            if self._expires_at is None or now >= self._expires_at:
+        if not self._lock.acquire(blocking=False):
+            # A probe is running. Never queue threads behind it, and never serve an expired result.
+            return self._is_fresh() and self._result
+        try:
+            if not self._is_fresh():
                 self._result = self._check()
                 self._expires_at = self._clock() + self._ttl
             return self._result
+        finally:
+            self._lock.release()
+
+    def _is_fresh(self) -> bool:
+        return self._expires_at is not None and self._clock() < self._expires_at

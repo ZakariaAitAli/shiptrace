@@ -9,8 +9,11 @@ def build_health_router(readiness: Callable[[], bool]) -> APIRouter:
     router = APIRouter()
 
     @router.get("/healthz", include_in_schema=False)
-    def healthz(response: Response) -> dict[str, str]:
-        """Process is alive. Never checks dependencies: restarting us cannot repair a database."""
+    async def healthz(response: Response) -> dict[str, str]:
+        """Process is alive. Never checks dependencies: restarting us cannot repair a database.
+
+        Async so it stays on the event loop, and answers even with the threadpool exhausted.
+        """
         response.headers["Cache-Control"] = "no-store"
         return {"status": "ok"}
 

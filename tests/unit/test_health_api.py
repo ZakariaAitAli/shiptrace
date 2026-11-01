@@ -1,5 +1,9 @@
 """HTTP contract of the health endpoints, with readiness replaced by a plain function."""
 
+import asyncio
+import threading
+
+import httpx2
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -49,3 +53,26 @@ def test_docs_are_absent_when_disabled() -> None:
 
 def test_docs_are_present_when_enabled() -> None:
     assert client(docs_enabled=True).get("/openapi.json").status_code == 200
+
+
+def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
+    release = threading.Event()
+
+    def stuck() -> bool:
+        release.wait(10)
+        return False
+
+    async def scenario() -> int:
+        app = build_api(readiness=stuck, docs_enabled=False)
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(transport=transport, base_url="http://test") as client:
+            waiting = [asyncio.create_task(client.get("/readyz")) for _ in range(60)]
+            await asyncio.sleep(0.1)
+            try:
+                response = await asyncio.wait_for(client.get("/healthz"), timeout=2)
+            finally:
+                release.set()
+            await asyncio.gather(*waiting)
+            return response.status_code
+
+    assert asyncio.run(scenario()) == 200
