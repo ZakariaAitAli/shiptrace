@@ -14,6 +14,8 @@ def main() -> None:
     cwd = Path(payload.get("cwd", "."))
     if not raw_path.endswith(".py") or ".claude/" in raw_path:
         return
+    if not (cwd / raw_path).resolve().is_relative_to(cwd.resolve()):
+        return
     if not (cwd / "pyproject.toml").exists() or shutil.which("uv") is None:
         return
     for args in (["format", raw_path], ["check", "--fix", raw_path]):

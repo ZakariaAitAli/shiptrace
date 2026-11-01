@@ -2,6 +2,7 @@
 """PreToolUse guard for file edits: protected paths, applied migrations, and secret content."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -22,6 +23,10 @@ PROTECTED_GLOBS = {
     "*.tfvars": "may hold secrets",
 }
 ALLOWED_NAMES = {".env.example"}
+# Run or read by commands outside the sandbox, so they change only with the owner.
+TRUSTED_EXECUTED = re.compile(
+    r"^(scripts/.+|compose[\w.-]*\.ya?ml|pyproject\.toml|\.git/.+)$"
+)
 
 SECRET_PATTERNS = {
     "AWS access key": r"\b(AKIA|ASIA)[0-9A-Z]{16}\b",
@@ -47,7 +52,8 @@ def is_tracked_migration(path: Path, cwd: str) -> bool:
 def path_problem(raw_path: str, cwd: str) -> str | None:
     if not raw_path:
         return None
-    path = Path(raw_path) if Path(raw_path).is_absolute() else Path(cwd) / raw_path
+    root = Path(os.path.abspath(cwd))
+    path = Path(os.path.normpath(root / raw_path))  # So x/../ cannot hide a protected path.
     name = PurePosixPath(path.as_posix()).name
     if name in ALLOWED_NAMES:
         return None
@@ -58,6 +64,8 @@ def path_problem(raw_path: str, cwd: str) -> str | None:
             return f"{name}: {why}"
     if re.search(r"(^|/)\.claude/(hooks/|settings(\.local)?\.json$)", path.as_posix()):
         return f"{name}: agent guardrails change only with the owner, who edits them directly"
+    if path.is_relative_to(root) and TRUSTED_EXECUTED.search(path.relative_to(root).as_posix()):
+        return f"{name}: runs outside the sandbox, so it changes only with the owner"
     if is_tracked_migration(path, cwd):
         return f"{name}: applied migrations are immutable, add a new one"
     return None

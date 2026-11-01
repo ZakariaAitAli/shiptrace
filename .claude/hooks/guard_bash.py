@@ -16,6 +16,12 @@ SECRET_PATH = re.compile(
     r"|\.tfstate"
 )
 SECRET_ENV_FILE = re.compile(r"(^|[\s/=\"'])\.env(\.(?!example\b)[\w-]+)?($|[\s\"';|&)*])")
+CONFIG_ENV = re.compile(
+    r"(^|[\s;&|(])(GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)"
+    r"|GIT_CONFIG_(COUNT|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM|KEY_\d+|VALUE_\d+)"
+    r"|HOME|XDG_CONFIG_HOME|GNUPGHOME)="
+)
+GIT_WORD = re.compile(r"\bgit\b")
 BYPASS = re.compile(r"dangerously-skip-permissions|bypassPermissions|dangerouslyDisableSandbox")
 PIPE_TO_SHELL = re.compile(r"\b(curl|wget)\b[^|;&]*\|\s*(sudo(\s+-\S+)*\s+)?(ba|z|da)?sh\b")
 SUBSTITUTION_TO_SHELL = re.compile(r"\b(ba|z|da)?sh\b[^|;&]*(\$\(|<\(|`)\s*(curl|wget)\b")
@@ -24,6 +30,7 @@ SUBSTITUTION = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 PROTECTED_TARGET = (
     r"(\S*/)?(uv\.lock|actions\.lock|\.claude/settings(\.local)?\.json)"
     r"|\S*\.claude/hooks/\S*|\S*migrations/versions/\S*"
+    r"|(\./)?scripts/\S+|(\./)?compose[\w.-]*\.ya?ml|(\./)?pyproject\.toml|\S*\.git/config"
 )
 SHELL_WRITE = re.compile(rf"(>>?\s*|\btee\s+(-\S+\s+)*)({PROTECTED_TARGET})")
 SED_IN_PLACE = re.compile(rf"\bsed\b[^|;&]*\s-i\S*[^|;&]*\s({PROTECTED_TARGET})")
@@ -31,11 +38,23 @@ SED_IN_PLACE = re.compile(rf"\bsed\b[^|;&]*\s-i\S*[^|;&]*\s({PROTECTED_TARGET})"
 SHELL_KEYWORDS = {"if", "then", "elif", "else", "for", "while", "until", "do", "!", "{"}
 WRAPPERS = {"sudo", "command", "env", "time", "nohup", "nice", "exec", "xargs", "timeout"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
-GUARDED = {"git", "gh", "terraform", "tofu", "docker", "rm", "aws", "eval"} | SHELLS
+GPG_AGENT_TOOLS = {"gpg-connect-agent", "gpg-preset-passphrase"}
+GUARDED = {"git", "gh", "gpg", "terraform", "tofu", "docker", "rm", "aws", "eval"}
+GUARDED |= SHELLS | GPG_AGENT_TOOLS
 TERRAFORM_DENIED = {"apply", "destroy", "import", "taint", "untaint", "force-unlock"}
 TERRAFORM_STATE_DENIED = {"rm", "mv", "push", "pull", "replace-provider"}
 GIT_OPTIONS_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
 GH_READ_ONLY_PR = {"list", "view", "diff", "status", "checks"}
+GIT_PROTECTED_KEYS = ("commit.gpgsign", "tag.gpgsign", "gpg.", "user.", "alias.", "core.", "include")
+GIT_COMMIT_DENIED = (
+    "--amend", "--author", "--reset-author", "--no-gpg-sign", "--no-verify", "--date", "--gpg-sign",
+)
+GIT_HISTORY_DENIED = {"rebase", "filter-branch", "filter-repo", "commit-tree", "update-ref", "replace"}
+GPG_DENIED = (
+    "--export-secret-keys", "--export-secret-subkeys", "--passphrase", "--passphrase-fd",
+    "--passphrase-file", "--pinentry-mode", "--change-passphrase", "--delete-secret-keys",
+    "--delete-secret-and-public-key", "--edit-key",
+)
 
 
 def split_segments(command: str) -> list[list[str]]:
@@ -66,6 +85,12 @@ def strip_leading(argv: list[str]) -> list[str]:
     return argv[index:]
 
 
+def names_long_option(args: list[str], options: tuple[str, ...]) -> bool:
+    """True if an argument is one of the options, or a prefix git or gpg would expand to it."""
+    names = (arg.split("=", 1)[0] for arg in args if arg.startswith("--") and len(arg) > 2)
+    return any(option.startswith(name) for name in names for option in options)
+
+
 def git_subcommand(args: list[str]) -> tuple[str, list[str]]:
     index = 0
     while index < len(args) and args[index].startswith("-"):
@@ -74,15 +99,25 @@ def git_subcommand(args: list[str]) -> tuple[str, list[str]]:
 
 
 def check_git(args: list[str]) -> str | None:
-    if "-c" in args and any("core." in value or "alias." in value for value in args):
-        return "git -c overriding core or alias settings"
+    if any(arg.startswith("--config-env") for arg in args):
+        return "git --config-env"
+    if names_long_option(args, ("--no-gpg-sign", "--gpg-sign")):
+        return "git option that changes signing"
+    if "-c" in args and any(
+        value.lower().startswith(GIT_PROTECTED_KEYS) for value in args
+    ):
+        return "git -c overriding protected settings"
     subcommand, rest = git_subcommand(args)
     if subcommand == "push" or (subcommand == "subtree" and "push" in rest):
         return "git push"
-    if subcommand == "commit" and (
-        "--no-verify" in rest or any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", a) for a in rest)
-    ):
+    if subcommand == "commit" and any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", a) for a in rest):
         return "git commit --no-verify"
+    if subcommand == "commit" and names_long_option(rest, GIT_COMMIT_DENIED):
+        return "git commit option that rewrites history, identity, hooks or signing"
+    if subcommand == "commit" and any(re.fullmatch(r"-[a-zA-Z]*S.+", a) for a in rest):
+        return "git commit with another signing key"
+    if subcommand in GIT_HISTORY_DENIED:
+        return f"git {subcommand} rewrites history or bypasses signing"
     if subcommand == "reset" and "--hard" in rest:
         return "git reset --hard"
     if subcommand == "clean" and (
@@ -93,8 +128,15 @@ def check_git(args: list[str]) -> str | None:
         return "git restore discards working changes"
     if subcommand == "checkout" and "--" in rest:
         return "git checkout -- discards working changes"
-    if subcommand == "config" and ("--global" in rest or "core.hooksPath" in rest):
+    if subcommand == "config" and "--global" in rest:
         return "git config changing global settings or hooks"
+    if (
+        subcommand == "config"
+        and "--get" not in rest
+        and len(rest) > 1
+        and any(arg.lower().startswith(GIT_PROTECTED_KEYS) for arg in rest)
+    ):
+        return "git config changing identity, aliases or signing"
     if subcommand == "remote" and rest[:1] in (["add"], ["set-url"]):
         return "changing git remotes"
     return None
@@ -104,7 +146,13 @@ def check_gh(args: list[str]) -> str | None:
     if not args:
         return None
     group, action = args[0], args[1] if len(args) > 1 else ""
-    if group in {"search", "help"}:
+    if group in {"search", "help", "--version"}:
+        return None
+    if args[-1] == "--help" and len(args) <= 3:  # Longer forms may be a flag's value.
+        return None
+    if group == "attestation" and action == "verify":
+        return None
+    if group in {"repo", "workflow", "release"} and action in {"list", "view"}:
         return None
     if group == "auth" and action == "status" and not {"--show-token", "-t"} & set(args):
         return None
@@ -112,7 +160,7 @@ def check_gh(args: list[str]) -> str | None:
         return None
     if group == "pr" and action in GH_READ_ONLY_PR:
         return None
-    if group == "run" and action in {"list", "view", "watch"}:
+    if group == "run" and action in {"list", "view", "watch", "download"}:
         return None
     if group == "api":
         joined = " ".join(args)
@@ -192,6 +240,10 @@ def check_segment(argv: list[str], depth: int) -> str | None:
         return check_docker(args)
     if program == "rm":
         return check_rm(args)
+    if program == "gpg" and names_long_option(args, GPG_DENIED):
+        return "gpg key or passphrase handling"
+    if program in GPG_AGENT_TOOLS:
+        return "direct gpg-agent access"
     if program == "aws" and args[:1] not in (["--version"], ["help"]):
         return "aws (cloud access needs owner approval)"
     return None
@@ -202,6 +254,8 @@ def check_command(command: str, depth: int = 0) -> str | None:
         return "command nesting too deep to check"
     if BYPASS.search(command):
         return "permission or sandbox bypass flag"
+    if CONFIG_ENV.search(command) and GIT_WORD.search(command):
+        return "overriding Git identity or configuration through the environment"
     if PIPE_TO_SHELL.search(command) or SUBSTITUTION_TO_SHELL.search(command):
         return "running a download in a shell"
     if SECRET_PATH.search(command):

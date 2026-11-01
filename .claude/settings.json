@@ -3,13 +3,14 @@
   "permissions": {
     "disableBypassPermissionsMode": "disable",
     "allow": [
-      "Bash(scripts/verify.sh)",
       "Bash(python3 -I scripts/check_repo.py)",
       "Bash(python3 -I .claude/hooks/tests/test_hooks.py)",
       "Bash(uv run pytest *)",
       "Bash(uv run ruff *)",
       "Bash(uv run mypy *)",
-      "Bash(uv run lint-imports *)"
+      "Bash(uv run lint-imports *)",
+      "Bash(scripts/verify.sh --fast)",
+      "Bash(uv run --frozen pytest tests/unit *)"
     ],
     "deny": [
       "Read(**/.env)",
@@ -29,6 +30,11 @@
       "Bash(terraform apply *)",
       "Bash(terraform destroy *)",
       "Bash(aws *)"
+    ],
+    "ask": [
+      "Bash(scripts/verify.sh)",
+      "Bash(scripts/smoke.sh)",
+      "Bash(git commit *)"
     ]
   },
   "hooks": {
@@ -68,5 +74,51 @@
         ]
       }
     ]
+  },
+  "env": {
+    "UV_CACHE_DIR": ".uv-cache",
+    "UV_NO_SYNC": "1"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": true,
+    "excludedCommands": [
+      "scripts/verify.sh",
+      "scripts/smoke.sh",
+      "git commit *"
+    ],
+    "filesystem": {
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh",
+        "~/.claude/.credentials.json",
+        "~/.gnupg",
+        "~/.docker/config.json",
+        "~/.netrc",
+        "~/.pgpass",
+        ".env",
+        ".env.local",
+        ".env.production"
+      ],
+      "denyWrite": [
+        "scripts",
+        "compose.yaml",
+        "compose.override.yaml",
+        "pyproject.toml",
+        "uv.lock",
+        ".venv",
+        ".git/config",
+        ".gitleaks.toml"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "pypi.org",
+        "files.pythonhosted.org"
+      ]
+    }
   }
 }
