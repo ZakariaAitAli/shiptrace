@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Deployment keys are public identifiers in the form gha-<run_id>-<run_attempt>"
+regexTarget = "match"
+regexes = ['''deployment_key["']?\s*[:=]\s*["']gha-[0-9]+-[0-9]+["']''']

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "Bash(scripts/verify.sh)",
+      "Bash(python3 -I scripts/check_repo.py)",
+      "Bash(python3 -I .claude/hooks/tests/test_hooks.py)",
+      "Bash(uv run pytest *)",
+      "Bash(uv run ruff *)",
+      "Bash(uv run mypy *)",
+      "Bash(uv run lint-imports *)"
+    ],
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*.tfstate*)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.claude/.credentials.json)",
+      "Bash(git push *)",
+      "Bash(gh pr merge *)",
+      "Bash(gh release *)",
+      "Bash(docker push *)",
+      "Bash(terraform apply *)",
+      "Bash(terraform destroy *)",
+      "Bash(aws *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_bash.py\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_files.py\"",
+            "timeout": 10,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -I \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_python.py\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}
