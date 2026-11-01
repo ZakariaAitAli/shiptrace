@@ -111,3 +111,22 @@ Commands below were run on the final commit unless stated. See the section at th
 Corrections to earlier claims. The first `check_gates.py` result, 21 of 21, is withdrawn: it accepted
 any non-zero exit, and one violation failed before reaching the step it claimed to test. V27's
 "42 of 42" stands as recorded, but those mutants were checked by test failure only.
+
+### Final P0.2 evidence, at commit c578267
+
+| ID | Check | Outcome |
+|---|---|---|
+| V36 | `scripts/check_gates.py`: full-gate baseline, then 24 violations, each needing exit 1 and a named marker | Baseline exit 0. 24 of 24 caught. The stricter check first reported 6 misses: 3 wrong markers, and 3 that exposed a real pre-commit crash on non-UTF-8 content, now fixed with a test |
+| V37 | Forced smoke failures: broken migration, readiness never recovering, app crash, outage reported ready, broken bootstrap SQL, total timeout, signal mid-run, missing Docker | Each gave the expected exit code (1, 130 or 2) and left 0 containers and 0 volumes |
+| V38 | Fresh `git clone`, `uv sync --locked`, `scripts/verify.sh`; smoke 5 times; integration 10 times | Exit 0. 97 tests, 95% coverage, mypy clean on 28 files, 3 of 3 contracts. Smoke 5 of 5. Integration 10 of 10. Nothing left behind |
+
+Guard patch v3 is `1865b1f0550403ae…` by SHA-256, and `git apply --check` passes at this commit.
+
+### Not verified at P0.2
+
+- Guard patch v3 in the real repository: it is not applied.
+- `allowUnsandboxedCommands: false`: not forced, because the model declined to try.
+- `onFailure: "block"` on a hook timeout, and whether hooks themselves run outside the sandbox.
+- An in-flight request during SIGTERM (AC17, P3).
+- `transaction_per_migration`, real pool exhaustion, and a real network blackhole.
+- Workflow lockfile and attestation tooling with local gh 2.46.0.
