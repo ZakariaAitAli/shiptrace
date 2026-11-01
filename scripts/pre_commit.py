@@ -1,7 +1,9 @@
-#!/usr/bin/env python3
-"""pre-commit hook: fast, deterministic checks on the staged content, never the working tree.
+#!/usr/bin/env -S python3 -I
+"""pre-commit hook: fast, deterministic checks on staged content.
 
-Any check that cannot run blocks the commit. Slower gates live in scripts/verify.sh.
+Paths, secrets, migrations and style read the index, not the working tree. The lockfile and import
+checks need a whole project, so they read the working tree. Any check that cannot run blocks the
+commit. Slower gates live in scripts/verify.sh.
 """
 
 import re
@@ -33,8 +35,9 @@ def git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 def staged_files() -> list[tuple[str, str]]:
-    output = git("diff", "--cached", "--name-status", "--no-renames").stdout
-    return [(line[0], line.split("\t", 1)[1]) for line in output.splitlines()]
+    output = git("diff", "--cached", "--name-status", "--no-renames", "-z").stdout
+    fields = output.split("\0")
+    return list(zip(fields[0::2], fields[1::2], strict=False))[: len(fields) // 2]
 
 
 def forbidden_paths(files: list[tuple[str, str]]) -> list[str]:
@@ -48,7 +51,7 @@ def forbidden_paths(files: list[tuple[str, str]]) -> list[str]:
 
 
 def secrets(_: list[tuple[str, str]]) -> list[str]:
-    diff = git("diff", "--cached", "-U0", "--no-color", "--no-ext-diff").stdout
+    diff = git("diff", "--cached", "-U0", "--no-color", "--no-ext-diff", "--text").stdout
     found, current = [], "?"
     for line in diff.splitlines():
         if line.startswith("+++ "):
@@ -92,8 +95,8 @@ def python_style(files: list[tuple[str, str]]) -> list[str]:
             target.write_text(git("show", f":{path}").stdout)
         found = []
         for label, args in (
-            ("ruff format", ("format", "--check", ".")),
-            ("ruff check", ("check", "--no-cache", ".")),
+            ("ruff format", ("format", "--check", ".")),  # Never --diff: it would print lines.
+            ("ruff check", ("check", "--no-cache", "--output-format=concise", ".")),
         ):
             result = tool("ruff", *args, cwd=directory)
             if result.returncode != 0:
@@ -106,7 +109,7 @@ def lockfile(files: list[tuple[str, str]]) -> list[str]:
         return []
     root = Path(git("rev-parse", "--show-toplevel").stdout.strip())
     if not (root / "uv.lock").exists():
-        return []
+        return ["uv.lock is missing"]
     result = subprocess.run(
         ["uv", "lock", "--check", "--project", str(root)],
         capture_output=True,
@@ -120,11 +123,22 @@ def lockfile(files: list[tuple[str, str]]) -> list[str]:
 def boundaries(files: list[tuple[str, str]]) -> list[str]:
     if not any(path.startswith("src/") for _, path in files):
         return []
-    result = tool("lint-imports")
+    root = git("rev-parse", "--show-toplevel").stdout.strip()
+    result = tool("lint-imports", cwd=root)
     return [] if result.returncode == 0 else [f"import boundaries:\n{result.stdout[-1200:]}"]
 
 
 CHECKS = (forbidden_paths, secrets, applied_migrations, python_style, lockfile, boundaries)
+
+
+def run_checks(files: list[tuple[str, str]]) -> list[str]:
+    problems: list[str] = []
+    for check in CHECKS:
+        found = check(files)
+        problems.extend(found)
+        if check is secrets and found:
+            return problems  # Later tools may quote the offending line, so none of them run.
+    return problems
 
 
 def main() -> int:
@@ -133,7 +147,7 @@ def main() -> int:
         return 1
     try:
         files = staged_files()
-        problems = [problem for check in CHECKS for problem in check(files)] if files else []
+        problems = run_checks(files) if files else []
     except (OSError, subprocess.SubprocessError) as error:
         print(f"pre-commit: a check could not run ({type(error).__name__})", file=sys.stderr)
         return 1

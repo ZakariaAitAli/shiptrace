@@ -48,6 +48,8 @@ class CommitMessages(unittest.TestCase):
             "feat(api): add x\n\nGenerated with Claude Code",
             "feat(api): add x\n\nThis was AI-assisted.",
             "feat(api): add x\n\nCo-Authored-By: Someone <noreply@anthropic.com>",
+            "feat(api): add x\n\n# Co-Authored-By: Claude <x@y.z>",
+            "feat(api): add x\n\n# Generated with Claude Code",
         ]:
             with self.subTest(message=message):
                 self.assertNotEqual(problems(message), [])

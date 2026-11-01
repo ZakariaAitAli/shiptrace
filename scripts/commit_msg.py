@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S python3 -I
 """commit-msg hook: enforces ShipTrace's Conventional Commits rules. Usage: commit_msg.py <file>"""
 
 import re
@@ -11,7 +11,7 @@ GENERIC = {"update", "updates", "fix", "fixes", "wip", "changes", "misc", "stuff
 PAST_TENSE = re.compile(r"^[a-z]+ed$")
 AI_NAME = r"(claude|anthropic|chatgpt|openai|copilot|gemini|\bai\b)"
 AI_ATTRIBUTION = (
-    re.compile(rf"^co-authored-by:.*{AI_NAME}", re.IGNORECASE | re.MULTILINE),
+    re.compile(rf"^#?\s*co-authored-by:.*{AI_NAME}", re.IGNORECASE | re.MULTILINE),
     re.compile(rf"generated (with|by)\b.*{AI_NAME}", re.IGNORECASE),
     re.compile(r"\bai[- ]assisted\b", re.IGNORECASE),
     re.compile(r"noreply@anthropic\.com", re.IGNORECASE),
@@ -42,7 +42,7 @@ def problems(message: str) -> list[str]:
         found.append(f"header is {len(header)} characters; limit is {MAX_HEADER}")
     if len(text.splitlines()) > 1 and text.splitlines()[1].strip():
         found.append("second line must be blank")
-    if any(pattern.search(text) for pattern in AI_ATTRIBUTION):
+    if any(pattern.search(message) for pattern in AI_ATTRIBUTION):  # Comments included.
         found.append("AI attribution is not allowed")
     return found
 

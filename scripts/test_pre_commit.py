@@ -141,6 +141,44 @@ class PreCommit(unittest.TestCase):
         result = self.repo.run_hook()
         self.assertNotIn(secret, result.stdout + result.stderr)
 
+    def test_ruff_output_does_not_echo_a_secret(self) -> None:
+        secret = "ghp_" + "d" * 36
+        self.repo.stage("a.py", f"VALUE   =   '{secret}'\n")
+        result = self.repo.run_hook()
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn(secret, result.stdout + result.stderr)
+
+    def test_unusual_file_names_are_still_checked(self) -> None:
+        self.repo.stage("caf\u00e9.pem", "x\n")
+        self.assert_blocked("must not be committed")
+
+    def test_secret_in_a_binary_looking_file_is_blocked(self) -> None:
+        secret = "ghp_" + "e" * 36
+        target = self.repo.path / "blob.bin"
+        target.write_bytes(b"\x00\x01" + secret.encode() + b"\n")
+        self.repo.git("add", "-f", "blob.bin")
+        self.assert_blocked("looks like a secret")
+
+    def test_deleting_the_lockfile_is_blocked(self) -> None:
+        self.repo.stage("uv.lock", "version = 1\n")
+        self.repo.snapshot_tree()
+        self.repo.git("rm", "-q", "--cached", "uv.lock")
+        (self.repo.path / "uv.lock").unlink()
+        self.assert_blocked("uv.lock")
+
+    def test_missing_uv_blocks_instead_of_skipping_checks(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-I", str(HOOK)],
+            cwd=self.repo.path,
+            env={"PATH": str(Path(sys.executable).parent.parent / "nonexistent")},
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("uv", result.stderr)
+
     def test_placeholder_urls_are_allowed(self) -> None:
         self.repo.stage("notes.txt", "postgresql://app:<password>@db/shiptrace\n")
         self.assert_allowed()
@@ -174,6 +212,7 @@ class PreCommit(unittest.TestCase):
             check=False,
         )
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must not be committed", result.stderr)
         log = subprocess.run(
             ["git", "rev-parse", "--verify", "-q", "HEAD"],
             cwd=self.repo.path,
