@@ -94,7 +94,7 @@
          return "git commit --no-verify"
 +    if subcommand == "commit" and names_long_option(rest, GIT_COMMIT_DENIED):
 +        return "git commit option that rewrites history, identity, hooks or signing"
-+    if subcommand == "commit" and any(re.fullmatch(r"-S.+", a) for a in rest):
++    if subcommand == "commit" and any(re.fullmatch(r"-[a-zA-Z]*S.+", a) for a in rest):
 +        return "git commit with another signing key"
 +    if subcommand in GIT_HISTORY_DENIED:
 +        return f"git {subcommand} rewrites history or bypasses signing"
@@ -204,11 +204,12 @@
      return None
 --- a/.claude/hooks/tests/test_hooks.py
 +++ b/.claude/hooks/tests/test_hooks.py
-@@ -87,6 +87,71 @@
+@@ -87,6 +87,72 @@
          "grep TOKEN .env.production",
          "cat ~/.config/gh/hosts.yml",
          "echo 'unterminated",
 +        # Security review of v2.
++        "git commit -aSOTHERKEY -m x",
 +        "git -c commit.gpgSign=false commit -m x",
 +        "git -c COMMIT.GPGSIGN=false commit -m x",
 +        "git -c core.hookspath=/dev/null commit -m x",
@@ -276,7 +277,7 @@
          # Found by the foundation review: shell structure.
          "if true; then git push origin main; fi",
          "for b in a b; do git push origin x; done",
-@@ -159,6 +224,29 @@
+@@ -159,6 +225,29 @@
          "grep -r pushd docs",
          "python3 -I scripts/check_repo.py",
          "git restore --staged a.py",
@@ -306,7 +307,7 @@
          "git checkout -b feature",
          "git switch main",
          "gh auth status",
-@@ -220,6 +308,19 @@
+@@ -220,6 +309,19 @@
              "infra/terraform.tfstate.backup",
              ".claude/settings.json",
              ".claude/hooks/guard_bash.py",
@@ -326,7 +327,7 @@
          ]:
              with self.subTest(path=path):
                  self.assertEqual(self.exit_code(path), 2)
-@@ -328,6 +429,12 @@
+@@ -328,6 +430,12 @@
  
  
  class FormatPython(unittest.TestCase):
