@@ -88,6 +88,8 @@ were reproduced first; see the phase report commit for the fixes.
 
 | V27 | Repeat after fixes | 93 tests pass. Defect injection repeated with 16 new mutants: 42 of 42 caught. Real-process run repeated with identical results. A built wheel contains the migrations, now a gate |
 
+| V28 | Clean clone | **Failed once**: 9 errors from a flaky fixture I wrote. A port chosen on the Linux side can be refused by Docker Desktop on Windows; about 1 run in 6. Fixture now retries on that error only. 26 consecutive integration runs then passed, and no containers were left behind |
+
 Not verified from this review: `transaction_per_migration` behaviour (no test can show it with one
 migration); `tcp_user_timeout` under a real network blackhole, since Docker's proxy acknowledges
 locally; log suppression in the bootstrap script; bootstrap script on RDS.
