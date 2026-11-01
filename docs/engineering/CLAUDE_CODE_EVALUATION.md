@@ -11,7 +11,7 @@ Reviewed 2026-11-01 for Claude Code 2.1.316 against code.claude.com/docs, agents
 | **Subagents** | `tools`, `disallowedTools`, frontmatter `hooks`, `maxTurns`; can nest unless `Agent` is removed | Four reviewers: no edit tools, no `Agent`, read-only Bash hook |
 | **Hooks** | `PreToolUse` deny blocks a call; non-2 exit codes **fail open** unless `onFailure: "block"`; docs recommend permissions for hard rules because `if` is best-effort | Three hooks; guards fail closed, with no reliance on `if` |
 | **Permissions** | Deny, then ask, then allow; deny applies to subcommands, substitutions and subshells | Deny list for secrets and outward actions; `disableBypassPermissionsMode` |
-| **Sandboxing** | bubblewrap and socat on Linux/WSL2; Docker is incompatible and must be excluded; reads default wide open, including `~/.ssh` | Enforcement proven here (V15, V16, V34, V35). Config waits in the owner's guard patch v3 |
+| **Sandboxing** | bubblewrap and socat on Linux/WSL2; Docker is incompatible and must be excluded; reads default wide open, including `~/.ssh` | Enforcement proven here (V15, V16, V34, V35). Active since `a0ee681` |
 | **Worktrees** | `--worktree`, `isolation: worktree`; need a first commit; `${CLAUDE_PROJECT_DIR}` does not follow into a worktree, while `cwd` does | Use for parallel implementation later; hooks read `cwd` from input |
 | **Plugins** | Run as you, add per-session cost, marketplace does not vet behaviour | None installed |
 | **MCP** | Adds tools and injection surface | None. `gh` CLI and doc fetching suffice |

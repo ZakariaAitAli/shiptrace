@@ -37,8 +37,9 @@ Pre-commit hook, repeatable smoke script, gate-violation proof and readiness rev
 the verification log, entries V29 to V50.
 
 Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
-the owner's external gate at `b7ceec8`. **Open:** the final independent review. P1 waits for an
-independent P0 PASS and the owner's authorization.
+the owner's external gate at `b7ceec8`. **Open:** the final security review failed on two confirmed sandbox
+escapes. The owner applies the final fixes patch, then repeats the external gate and security review.
+P1 waits for an independent P0 PASS and the owner's authorization.
 
 ## Standing obligation
 

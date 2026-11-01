@@ -9,6 +9,7 @@ for the current phase. Read before changing behavior:
 - All gates, needs Docker: `scripts/verify.sh`
 - Gates that need no Docker, safe in the sandbox: `scripts/verify.sh --fast`
 - Real-process smoke test: `scripts/smoke.sh`
+- Owner-run, outside the sandbox: `scripts/p0_gate.sh`, `scripts/check_gates.py`
 - Unit tests only: `uv run --frozen pytest tests/unit -q`
 - Check Claude config and docs links only: `python3 -I scripts/check_repo.py`
 - Test hooks: `python3 -I .claude/hooks/tests/test_hooks.py`
@@ -42,7 +43,8 @@ stdlib with no clock or I/O. Do not add exceptions; change the ADR first.
 Hooks block these, and that is intended. Do not work around a block by indirection. Ask the
 owner, who can run the command with `! <command>`:
 
-`git push`, merges to protected branches, `gh` writes, `docker push`, `aws`, Terraform changes.
+`git push`, `gh` writes, `docker push`, `aws`, Terraform changes. Local merges are not hook-blocked;
+do not merge into `main` without approval.
 Never touch unrelated repositories, credentials or cloud accounts.
 
 ## Commits

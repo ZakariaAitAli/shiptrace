@@ -52,6 +52,10 @@ the two named scripts, such as `check_gates.py`, are owner-run. Inside the sandb
 its `/dev/null` placeholders as untracked, so stage explicit paths and never `git add -A`. Signatures
 read `E` there, because `~/.gnupg` is hidden, so a good signature can only be confirmed outside it.
 
+**Hooks are a third tier.** Command hooks run outside the sandbox with full access and no approval,
+so a hook must never run anything the sandbox can write, and must never trust the working directory
+in its payload. The final review found both broken; the owner patch `p0-final-fixes` addresses this.
+
 **What remains.** Approval is the only control over the full run. `scripts/verify.sh` runs `src/`
 and `tests/`, which the agent can edit, with full access, so approving it means trusting that code.
 The stronger answer is running integration tests in a container with no Docker socket and no home

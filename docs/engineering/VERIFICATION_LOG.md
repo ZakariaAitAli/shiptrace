@@ -207,3 +207,21 @@ reported them; Claude Code did not run or observe this execution.
 | V48 | `scripts/p0_gate.sh`: clean clone, then `scripts/verify.sh` | Checkout clean. Exit 0. 97 passed, 95% coverage, mypy clean on 28 files, 3 of 3 contracts, history OK |
 | V49 | Smoke, three times; `scripts/check_gates.py` | Smoke 3 of 3. Baseline exit 0. 33 violations, 0 missed, exit 0 |
 | V50 | Every commit reachable from HEAD must be `G` | 42 commits, none unverified. Gate exit 0, `P0 GATE: ALL STEPS PASSED`. Supersedes V39 to V41, and closes the signature check left open by V46 |
+
+## Final independent reviews, at `be3957c`
+
+Architecture review: BLOCKED only because no security review was recorded; no code blocker. Security
+review: **FAIL**, two blockers. Both were confirmed before any fix.
+
+| ID | Finding | Disposition |
+|---|---|---|
+| V51 | Blocker: hooks run outside the sandbox (documented) yet `format_python.py` and `guard_files.py` trust the payload `cwd`, so a nested project's tools could run unapproved | Confirmed with a contained probe: `uv` targeted the nested `.venv`. No escape was performed. Fixed in the owner patch |
+| V52 | Blocker: exclusions match text only, so an approved `git commit` or `scripts/verify.sh` from a nested directory would run what lives there. `.git/commondir` is writable and unmounted | Confirmed by reading `guard_bash.py` and mount info. This corrects the earlier "controlled by approving each commit" claim. Fixed in the owner patch |
+| V53 | Symlink past file guard; `.venv` and `.gitleaks.toml` unguarded for edit tools; Read deny gaps; `rm -rf ./.git`; `git checkout .`; `++` lines unscanned; `T` type change on migrations; stray tool configs outrank `pyproject.toml`; broad integration marker | Fixed in the owner patch |
+| V54 | Stale documents, hook tier missing from ADR-0010, "fail-closed" overclaim, merge claim in `CLAUDE.md` | Fixed in this commit |
+| V55 | Not changed: `.env.*` Read deny (would also block `.env.example`), `rg --hostname-bin` (sandbox-contained), spurious 503 during an overlapping refresh (deliberate), duplicated image digest, Alembic CLI fallback, stdlib-only domain check (with first domain code), frozen growth of `guard_bash.py` | Recorded; none blocks P0 |
+
+Owner patch built in a throwaway clone: 15 hook subtests and 1 pre-commit test failed first; all pass;
+`scripts/verify.sh --fast` passes there. 9 of 11 mutants killed; the 2 survivors are the two layers
+of the `format_python.py` fix, each covering the other, and removing both together fails the tests.
+The Docker gates have not run on this patch, so V48 to V50 no longer describe the final state.
