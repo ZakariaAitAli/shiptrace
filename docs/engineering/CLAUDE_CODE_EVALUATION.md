@@ -11,7 +11,7 @@ Reviewed 2026-11-01 for Claude Code 2.1.316 against code.claude.com/docs, agents
 | **Subagents** | `tools`, `disallowedTools`, frontmatter `hooks`, `maxTurns`; can nest unless `Agent` is removed | Four reviewers: no edit tools, no `Agent`, read-only Bash hook |
 | **Hooks** | `PreToolUse` deny blocks a call; non-2 exit codes **fail open** unless `onFailure: "block"`; docs recommend permissions for hard rules because `if` is best-effort | Three hooks; guards fail closed, with no reliance on `if` |
 | **Permissions** | Deny, then ask, then allow; deny applies to subcommands, substitutions and subshells | Deny list for secrets and outward actions; `disableBypassPermissionsMode` |
-| **Sandboxing** | bubblewrap and socat on Linux/WSL2; Docker is incompatible and must be excluded; reads default wide open, including `~/.ssh` | Enforcement proven here (V15, V16). Config waits in the owner's guard patch |
+| **Sandboxing** | bubblewrap and socat on Linux/WSL2; Docker is incompatible and must be excluded; reads default wide open, including `~/.ssh` | Enforcement proven here (V15, V16, V34, V35). Config waits in the owner's guard patch v3 |
 | **Worktrees** | `--worktree`, `isolation: worktree`; need a first commit; `${CLAUDE_PROJECT_DIR}` does not follow into a worktree, while `cwd` does | Use for parallel implementation later; hooks read `cwd` from input |
 | **Plugins** | Run as you, add per-session cost, marketplace does not vet behaviour | None installed |
 | **MCP** | Adds tools and injection surface | None. `gh` CLI and doc fetching suffice |
@@ -49,9 +49,15 @@ Tested on this machine through a separate headless session (V15, V16):
 - Sandboxed commands cannot write to `/tmp`. Use `$TMPDIR`.
 - Excluded commands match the literal call. A compound command does not match, so
   `scripts/verify.sh; echo $?` stays sandboxed and cannot reach Docker.
-- `uv` needs a writable cache, so the config sets `UV_CACHE_DIR` inside `.venv`.
-- `git commit` is excluded so that signing can reach `gpg-agent`. Signing inside the sandbox was
-  not tested.
+- `uv` needs a writable cache, so the config sets `UV_CACHE_DIR` to the ignored `.uv-cache`.
+- Signing fails inside the sandbox, because gpg cannot write under `~/.gnupg`. `git commit` must
+  be excluded, and so needs approval on every run.
+- `denyWrite` paths are relative to the project in project settings, but not with `--settings`.
+  A test using `--settings` with a relative path silently protects nothing.
+- `failIfUnavailable` was shown to refuse startup when `socat` is missing. `allowUnsandboxedCommands:
+  false` could not be forced: the model declined to try, so that rests on the documentation.
+- An excluded script runs edited content outside the sandbox. This was proven with a probe, and it
+  is why every exclusion now needs approval.
 
 ## Sources
 

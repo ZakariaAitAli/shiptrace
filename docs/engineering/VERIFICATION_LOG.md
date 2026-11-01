@@ -56,7 +56,7 @@ was reasoned by the reviewer and author. It is **not tested yet**; P1 concurrenc
 | V16 | Everyday commands inside the sandbox | git, uv, ruff, mypy, lint-imports, unit tests and hook tests all work. `scripts/verify.sh` passes through its exclusion |
 | V17 | Guard mutation re-run on the rewritten hooks, on a scratch copy | 39 of 39 killed |
 | V18 | 74 legitimate commands against the guard | 13 false positives, mostly read-only `gh`. 10 fixed in the patch. 3 remain, all fail safe: `.env` mentioned in a grep or commit message |
-| V19 | Guard patch, on a copy | 29 new subtests failed first, then passed; 13 of 13 new mutants killed; `git apply --check` passes. **Not applied**: guards change only with the owner |
+| V19 | Guard patch v1, on a copy. **Superseded by V34**; v1 must not be applied | 29 new subtests failed first, then passed; 13 of 13 new mutants killed; `git apply --check` passes. **Not applied**: guards change only with the owner |
 | V20 | Test-first: suite run before implementation | Collection failed, as expected |
 | V21 | Sentinel test | **Found a real defect**: `hide_input_in_errors` leaves the password in `ValidationError.errors()`. URL refusals now raise an exception Pydantic does not wrap. This fix was **incomplete**; see V25 |
 | V22 | `scripts/verify.sh` | Exit 0. 68 tests on real PostgreSQL 18.6, strict mypy on 27 files, 3 of 3 import contracts. Branch coverage 95%; `bootstrap/migrate.py` shows 0% there and is exercised by V24 instead |
@@ -93,3 +93,21 @@ were reproduced first; see the phase report commit for the fixes.
 Not verified from this review: `transaction_per_migration` behaviour (no test can show it with one
 migration); `tcp_user_timeout` under a real network blackhole, since Docker's proxy acknowledges
 locally; log suppression in the bootstrap script; bootstrap script on RDS.
+
+## P0.2, 2026-11-01
+
+Commands below were run on the final commit unless stated. See the section at the end for its hash.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V29 | Review of guard patch v1 | Rejected by its own author, then by review: `--help` as a flag value, abbreviated git options, identity through the environment, and an excluded `git commit` running agent-editable hooks |
+| V30 | Sandbox experiments in throwaway clones | Refuses to start without `socat` (exit 1). Signing fails inside. An edited excluded script escaped and wrote to `$HOME`. Relative `denyWrite` does nothing through `--settings`, works in project settings |
+| V31 | Pre-commit hook, test first | Tests failed first. It then blocked three of my own commits; two were bugs in the hook itself, now fixed with tests. Review found Ruff could echo a staged secret; fixed, and tested |
+| V32 | Smoke script | First version **would have exited 0 on failure**, because a trap overwrote the status, and leaked a `sleep`. Both fixed. Review found it reintroduced the port race and allowed Compose override files. Both fixed |
+| V33 | Independent P0 gate review | Three project reviewers. Verdict at that commit: **not passed**. All confirmed findings fixed or recorded here |
+| V34 | Guard patch v3, on a copy | 82 new subtests failed first, then passed; 18 of 18 mutants killed. **Not applied to the repository** |
+| V35 | v3 as real project settings in a throwaway clone | Blocked: `scripts/*`, new files in `scripts/`, Compose files including overrides, `pyproject.toml`, `uv.lock`, `.venv`, `.git/config`, `.gitleaks.toml`, and renaming `scripts/`. `.env` unreadable. `src/` writable. Fast gates pass inside the sandbox. Edited `verify.sh` and `git commit` both need approval, and neither ran |
+
+Corrections to earlier claims. The first `check_gates.py` result, 21 of 21, is withdrawn: it accepted
+any non-zero exit, and one violation failed before reaching the step it claimed to test. V27's
+"42 of 42" stands as recorded, but those mutants were checked by test failure only.

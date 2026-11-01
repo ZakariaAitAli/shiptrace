@@ -28,6 +28,15 @@ real request. No such migration exists yet, so nothing is exposed today.
 4. Rollback after a contract migration is restore-from-backup or roll forward, never redeploying
    the old image. The Phase 7 rollback design must state this.
 
+5. `minimum_build_revision` must be the newest revision the **previous** release cannot run on, and
+   must stay known to the release being rolled out. Setting it to the contract revision itself
+   would drain the serving release mid-rollout.
+
+**Limit of the fix.** Only builds containing step 2 can read the table. Any image built before it
+stays ready on an incompatible schema, permanently. So rollback across the release that introduces
+step 2 stays unprotected, and rule 4 covers it. Step 2 also changes AC16, whose wording says unknown
+means newer, so it needs a spec change.
+
 **Why not build it now.** It would be an unused table with one row and no migration to exercise it.
 The rule costs nothing while no contract migration is needed, and the design is cheap to add first.
 
@@ -38,6 +47,7 @@ The rule costs nothing while no contract migration is needed, and the design is 
 - *Compare numeric schema versions*: only restates "newer", and says nothing about compatibility.
 - *Run migrations at startup*: races between tasks, and hides the problem instead of detecting it.
 
-**Consequences.** Readiness cannot detect a contract rollback until step 2 lands. `/readyz` checks
+**Consequences.** Readiness cannot detect a contract rollback until step 2 lands, and never can for
+older images. The plan holds step 2 as a standing obligation. `/readyz` checks
 compatibility only; it never proves that queries work. Whether the load balancer should use it at
 all during a database outage stays open for Phase 7.

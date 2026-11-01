@@ -28,8 +28,28 @@ fetching suffice, and each server widens the injection surface.
 
 **Limits, stated plainly.** Text-based command guards can be evaded by indirection, such as a
 written script, or by a tool that rewrites files, as `ruff format .` once did to a hook. They stop
-mistakes, and are not a security boundary. The OS sandbox is the boundary. It cannot wrap Docker, so
-excluded commands run with full access, including `scripts/verify.sh`, which the agent can edit.
+mistakes, and are not a security boundary. The OS sandbox is the stronger control, and is **not
+active** until the owner applies `docs/engineering/proposals/guard-update-v3.patch`.
+
+**Sandbox design (proposal v3, tested in a throwaway clone).**
+
+| Tier | Commands | Runs | Approval |
+|---|---|---|---|
+| Sandboxed | Everything, including `scripts/verify.sh --fast` | Inside the sandbox | None |
+| Excluded | `scripts/verify.sh`, `scripts/smoke.sh`, `git commit` | Outside the sandbox | Each run |
+
+- Docker cannot run in the sandbox, and signing fails there, so these exclusions are needed.
+- Every exclusion must be an `ask` rule and must not be an `allow` rule; `check_repo.py` enforces it.
+- The sandbox refuses to start when unavailable, and forbids unsandboxed retries.
+- `scripts/`, Compose files, `pyproject.toml`, `uv.lock`, `.venv`, `.git/config` and `.gitleaks.toml`
+  are read-only to sandboxed commands, and hooks block the edit tools on them. `UV_NO_SYNC` stops
+  excluded commands from rebuilding `.venv`. Dependency changes become owner actions.
+
+**What remains.** Approval is the only control over the full run. `scripts/verify.sh` runs `src/`
+and `tests/`, which the agent can edit, with full access, so approving it means trusting that code.
+The stronger answer is running integration tests in a container with no Docker socket and no home
+directory, and that is left for the owner to schedule. `autoAllowBashIfSandboxed` stays on, so
+sandboxed commands run unprompted; that is acceptable only because of the deny lists above.
 
 **Rejected.** *Long CLAUDE.md*: docs target under 200 lines, and adherence falls as it grows.
 *Stop hook running the suite*: slow, and it re-runs on every

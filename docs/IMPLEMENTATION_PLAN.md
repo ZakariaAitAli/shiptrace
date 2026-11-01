@@ -20,7 +20,7 @@ unresolved risks written down. New behavior starts with a failing test.
 
 ## P0.1 skeleton to green: done
 
-Evidence is in the verification log, entries V14 to V24.
+Evidence is in the verification log, entries V14 to V28.
 
 1. Owner decisions applied.
 2. `uv` installed from a checksum-verified release.
@@ -31,10 +31,18 @@ Evidence is in the verification log, entries V14 to V24.
 5. App factory, `/healthz`, `/readyz`; a role bootstrap script; Alembic with a first migration that applies grants.
 6. Extend `scripts/verify.sh` to run all gates.
 
-## Next slice: P0.2 close the P0 gate
+## P0.2 close the P0 gate: implemented, one owner step left
 
-Git pre-commit hook, a repeatable smoke script from the manual end-to-end run, and the owner's guard
-patch applied and committed. Then the P0 gate review, then P1.
+Pre-commit hook, repeatable smoke script, gate-violation proof and readiness review are done. See
+the verification log, entries V29 to V38.
+
+**Open:** the owner inspects and applies `docs/engineering/proposals/guard-update-v3.patch`. P0 is
+not complete until then, because enforcement of the signing policy and the sandbox depend on it.
+
+## Standing obligation
+
+Before the first contract migration, in whichever phase needs one: deliver ADR-0011 step 2. Until
+then contract migrations are forbidden.
 
 ## Owner decisions needed
 
@@ -43,7 +51,8 @@ patch applied and committed. Then the P0 gate review, then P1.
 | D1 | Repository visibility | **Decided: public**, once approved to publish | Artifact attestations need public repos below Enterprise Cloud; without this, AC22 needs a different provenance design |
 | D2 | Default branch | **Done: `main`** | Repository metadata expects `main`; `master` has no commits yet, so it is free now |
 | D3 | First commit of the foundation | **Done, signed** | Worktrees and hook protection for tracked migrations need history |
-| D4 | Enable OS sandbox | Apply the guard patch, which holds the proven config | Turns the agent guardrails into a real boundary |
+| D4 | Enable OS sandbox | Apply guard patch v3, which holds the proven config | Turns the agent guardrails into a real boundary |
 | D5 | Accepted MVP risks (six) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
 | D6 | Dashboard accounts (ADR-0006) | Approve before P2 | Replaces the rejected token sign-in |
+| D8 | Commit email | Decide before any push | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
 | D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The guard correctly stopped me checking |

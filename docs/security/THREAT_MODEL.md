@@ -1,7 +1,7 @@
 # ShipTrace — Threat Model
 
-Status: **Design-time, P0.1**. Only settings validation, database roles and health endpoints
-exist; almost no control below is implemented yet. "Verification" names the
+Status: **Design-time, P0**. Only settings validation, database roles, health endpoints and
+development guardrails exist; almost no control below is implemented yet. "Verification" names the
 evidence that must exist before a control may be claimed. Revisit at every phase boundary.
 
 Method: STRIDE over the trust boundaries below, scoped to a small internal tool.
@@ -61,7 +61,7 @@ A *stolen* admin token is in scope (T27).
 | T20 | Malicious dependency (T, E) | A4 | Hashed `uv.lock`, `pip-audit`, Dependabot review, SBOM, no install-time network in runtime image | CI gates | **Medium**: pinning freezes a bad version as faithfully as a good one |
 | T21 | Compromised action or tag-moving attack (T) | A4 | `actions.lock` for transitive pins, minimal `permissions`, zizmor | AC21 | Low to medium; a lockfile pins, but does not vet |
 | T22 | Unverified or swapped image in production (T) | A4 | Digest-only promotion, provenance and SBOM attestations verified before deploy | AC22 | Low |
-| T23 | Agent reads secrets, pushes, or runs destructive commands (T, I, E) | A5 | Permission rules, fail-closed hooks, read-only reviewers. Text-matching guards are guardrails, not a boundary | Hook test suite | **Medium** until the proven sandbox config is applied; see ADR-0010 |
+| T23 | Agent reads secrets, pushes, or runs destructive commands (T, I, E) | A5 | Permission rules, fail-closed hooks, read-only reviewers. Text-matching guards are guardrails, not a boundary | Hook test suite | **Medium**, staying Medium after the sandbox patch: approved full runs still execute agent-edited code; see ADR-0010 |
 | T24 | Prompt injection through fetched docs, dependencies or issues (T) | A5 | No auto-installed plugins, no MCP servers, review of third-party content, human gate on outward actions | Config check | Medium; inherent to agent use |
 | T25 | Key squatting: a stolen token pre-posts `failed` for a predictable future `gha-<run_id>-<attempt>` key, so the real `succeeded` is refused forever (T, D) | A2 | Binding limits scope; `409` is logged and counted; the example surfaces it as a warning | AC23 | **Medium**: that deployment's history stays wrong; accepted |
 | T26 | Rollback steering: forged `reverted` events walk "latest" back to an old, vulnerable version, and people redeploy it (T) | A2 | Mandatory environment binding, so a staging token cannot touch production; attribution; dashboard shows `reverted` with its reporter | AC7 | **Medium**: a production token can still do this until revoked |
@@ -81,3 +81,7 @@ deploy**. This trades completeness for availability of the system people care ab
 4. Dashboard accounts have no MFA (ASVS 6.3.3).
 5. T25: a squatted deployment key permanently blocks the true result for that deployment.
 6. T26: a production-bound token can forge rollbacks until revoked.
+7. ADR-0011: `/readyz` cannot detect a rollback past a contract migration. No such migration exists,
+   and none is allowed until the fix lands; older images stay exposed even then.
+8. T23: until guard patch v3 is applied, the signing policy is written down but not enforced for
+   the agent, and no OS sandbox is active. History is checked afterwards by `check_history.py`.

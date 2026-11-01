@@ -43,7 +43,8 @@ bootstrap wires everything, including logging and telemetry setup
 | `api` | Routers, Pydantic schemas, auth dependency, middleware, dashboard, error mapping | `persistence` |
 | `bootstrap` | Settings, app factory, lifespan, CLI | Is imported only by entry points |
 
-Enforced by `import-linter` contracts in CI, so a violation fails the build. Ports exist only
+Enforced by `import-linter` contracts in `scripts/verify.sh` and the pre-commit hook, and in CI
+from P5, so a violation fails the build. Ports exist only
 where they pay for themselves: fast unit tests of use cases without a database.
 
 ## 3. Data model
@@ -158,7 +159,8 @@ its default is 10 s.
 - Capacity rule: `maximum tasks during a rollout × 10 + 2` must stay below `max_connections`.
 - Migrations run as a separate one-shot step before rollout, never at app startup, where
   several tasks would race. Schema changes follow expand/contract so the previous version keeps
-  working during a rolling deploy or rollback.
+  working during a rolling deploy. Rollback past a contract migration is not supported: see
+  ADR-0011.
 - `/healthz` never touches dependencies; restarting the app does not repair a database.
 
 ## 6. Security architecture
@@ -210,7 +212,7 @@ shiptrace/
 │   ├── contract/                 OpenAPI drift and schema-driven API checks
 │   ├── migration/                Upgrade, downgrade, drift
 │   └── smoke/                    Built container against Compose
-├── scripts/                      verify.sh and repository checks
+├── scripts/                      verify.sh, smoke.sh, git hooks and repository checks
 ├── examples/github-actions/      CI integration example (P3)
 ├── infra/terraform/              Plan only, after approval (P7)
 ├── docs/                         Spec, architecture, ADRs, security, runbooks/, api/

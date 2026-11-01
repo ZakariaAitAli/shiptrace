@@ -1,7 +1,7 @@
 # Toolchain
 
-Versions checked on 2026-11-01 against PyPI, endoflife.date and vendor docs. The lockfile becomes
-the authority in P0; this records the starting point and why.
+Versions checked on 2026-11-01 against PyPI, endoflife.date and vendor docs. `uv.lock` is the
+authority; this records what was chosen and why.
 
 ## Host (Ubuntu 26.04 on WSL2, x86_64)
 
@@ -28,13 +28,13 @@ container. Scanners run in CI or through `uv tool`, and are not assumed on the h
 | PostgreSQL | 18 (18.6) | Support to 2030-11; on RDS |
 | uv | 0.13.6 | |
 | FastAPI / Starlette | 0.162.0 / 1.10.0 | |
-| Pydantic | 2.14.2 | |
+| Pydantic, pydantic-settings | 2.14.2, 2.16.2 | |
 | SQLAlchemy | 2.1.6 | Requires Python ≥ 3.11 |
 | Alembic | 1.20.1 | |
 | psycopg (binary) | 3.3.6 | No system libpq needed |
 | Uvicorn | 0.54.0 | Set `timeout_graceful_shutdown`; default `None`. Exits 143 on SIGTERM by design: it re-raises the signal after shutting down |
 | structlog, Jinja2 | Arrive with P3, P2 | |
-| OpenTelemetry SDK | 1.45.2 | Instrumentation `0.66b2`, pinned exactly |
+| OpenTelemetry SDK | Arrives with P3 | Planned 1.45.2, with instrumentation pinned exactly |
 | pytest / pytest-cov | 9.2.0 / 7.1.0 | |
 | Testcontainers | 4.15.0 | Import from `testcontainers.community.postgres`; the old path is deprecated |
 | httpx2 | 2.16.0 | Required by Starlette's test client; `httpx` is deprecated there. Declared in Starlette's metadata; source `pydantic/httpx2` |
@@ -44,8 +44,8 @@ container. Scanners run in CI or through `uv tool`, and are not assumed on the h
 | gitleaks | 8.30.1, image by digest | `.gitleaks.toml` allows only the `gha-<run>-<attempt>` format |
 | pip-audit / zizmor | Arrive with P5 | |
 
-Compatibility proof: `docs/engineering/VERIFICATION_LOG.md`, entry V3. Not proven yet: runtime
-behaviour of these versions together, which P0 and P1 tests will show.
+Compatibility proof: `docs/engineering/VERIFICATION_LOG.md`. Runtime behaviour of the installed
+versions is covered by the P0 gates; packages arriving later are not yet proven.
 
 ## Base image digests (2026-11-01)
 
