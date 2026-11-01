@@ -45,10 +45,12 @@ def append(path: str, text: str) -> Breaks:
     return apply
 
 
-def staged(breaks: Breaks) -> Breaks:
+def staged(breaks: Breaks, *ignored_paths: str) -> Breaks:
     def apply(clone: Path) -> None:
         breaks(clone)
-        subprocess.run(["git", "add", "-f", "-A"], cwd=clone, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=clone, check=True)
+        if ignored_paths:
+            subprocess.run(["git", "add", "-f", *ignored_paths], cwd=clone, check=True)
 
     return apply
 
@@ -100,7 +102,7 @@ VIOLATIONS = (
         "formatting",
         replace(READINESS, "import threading", "import   threading"),
         (*UV, "ruff", "format", "--check", "."),
-        "Would reformat",
+        "would be reformatted",
     ),
     Violation("lint", append(READINESS, "\nimport os\n"), (*UV, "ruff", "check", "."), "F401"),
     Violation(
@@ -143,7 +145,7 @@ VIOLATIONS = (
             "    except ProbeError:\n        return True",
         ),
         (*UV, "pytest", "tests/unit", "-q", "-x"),
-        "FAILED tests/unit/test_readiness.py",
+        "FAILED tests/unit/",
     ),
     Violation(
         "integration test",
@@ -215,7 +217,7 @@ VIOLATIONS = (
     ),
     Violation(
         "pre-commit: secret file",
-        staged(create(".env", "A=1\n")),
+        staged(create(".env", "A=1\n"), ".env"),
         PRECOMMIT,
         "must not be committed",
     ),
@@ -246,7 +248,12 @@ VIOLATIONS = (
         ("scripts/smoke.sh",),
         "FAILED during: interrupt the database",
     ),
-    Violation("verify.sh stops at a failure", append(READINESS, "\nimport os\n"), FAST, "F401"),
+    Violation(
+        "verify.sh stops at a failure",
+        append(READINESS, "\nimport os\n"),
+        FAST,
+        "would be reformatted",
+    ),
 )
 
 
