@@ -3,7 +3,7 @@
 #
 # Safe to run beside anything else: it uses its own Compose project, a free database port and
 # a free app port, generates passwords for this run only, and removes all of it on any exit.
-# Exit codes: 0 passed, 1 a check failed, 2 prerequisites missing.
+# Exit codes: 0 passed, 1 a check failed, 2 prerequisites missing, 130 interrupted or timed out.
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

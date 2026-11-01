@@ -38,7 +38,7 @@ echo "==> types"
 uv run --frozen mypy
 
 echo "==> import boundaries"
-uv run --frozen lint-imports
+uv run --frozen lint-imports --config pyproject.toml
 
 echo "==> built wheel ships the migrations"
 wheel_dir=$(mktemp -d)

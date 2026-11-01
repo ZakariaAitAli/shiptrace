@@ -129,7 +129,7 @@ def boundaries(files: list[tuple[str, str]]) -> list[str]:
     if not any(path.startswith("src/") for _, path in files):
         return []
     root = git("rev-parse", "--show-toplevel").stdout.strip()
-    result = tool("lint-imports", cwd=root)
+    result = tool("lint-imports", "--config", "pyproject.toml", cwd=root)
     return [] if result.returncode == 0 else [f"import boundaries:\n{result.stdout[-1200:]}"]
 
 

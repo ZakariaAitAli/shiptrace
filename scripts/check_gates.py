@@ -138,6 +138,15 @@ VIOLATIONS = (
         "Layers BROKEN",
     ),
     Violation(
+        "a stray .importlinter cannot disable contracts",
+        lambda clone: (
+            create(".importlinter", "[importlinter]\nroot_package = shiptrace\n")(clone),
+            append(HEALTH, "\nimport sqlalchemy  # noqa\n")(clone),
+        )[0],
+        (*UV, "lint-imports", "--config", "pyproject.toml"),
+        "API does not touch database libraries BROKEN",
+    ),
+    Violation(
         "unit test",
         replace(
             READINESS,

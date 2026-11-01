@@ -20,7 +20,7 @@ REQUIRED_GATES = (
     "ruff format --check",
     "ruff check",
     "uv run --frozen mypy",
-    "lint-imports",
+    "lint-imports --config pyproject.toml",
     "uv build --wheel",
     "pytest --cov",
     "--cov-fail-under",
