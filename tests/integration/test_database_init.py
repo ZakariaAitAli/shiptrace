@@ -1,6 +1,10 @@
 """Roles, privileges, session limits and migrations against real PostgreSQL."""
 
+import os
+import subprocess
+import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -82,6 +86,13 @@ def test_upgrade_downgrade_round_trip(empty_database: Database, engine_for: Engi
         is False
     )
 
+    upgrade(empty_database.migrator_url)
+    assert scalar(migrator, "SELECT version_num FROM alembic_version") == head
+
+    downgrade(empty_database.migrator_url, "base")
+    with migrator.begin() as connection:
+        connection.execute(text("DROP TABLE alembic_version"))
+
 
 def test_app_role_cannot_write_version_table(
     migrated_database: Database, engine_for: EngineFor
@@ -131,3 +142,68 @@ def test_statement_timeout_actually_cancels_work(migrated_database: Database) ->
             connection.execute(text("SELECT pg_sleep(5)"))
     finally:
         engine.dispose()
+
+
+def test_built_engine_sets_a_client_side_tcp_timeout(migrated_database: Database) -> None:
+    engine = build_engine(
+        migrated_database.app_url,
+        DatabaseOptions(
+            pool_size=1,
+            max_overflow=0,
+            pool_timeout_seconds=3,
+            statement_timeout_ms=1000,
+            lock_timeout_ms=500,
+            connect_timeout_seconds=3,
+        ),
+    )
+    try:
+        with engine.connect() as connection:
+            parameters = connection.connection.dbapi_connection.info.get_parameters()  # type: ignore[union-attr]
+        assert parameters["tcp_user_timeout"] == "5000"
+    finally:
+        engine.dispose()
+
+
+def test_public_cannot_connect_to_maintenance_databases(
+    empty_database: Database, engine_for: EngineFor
+) -> None:
+    admin = engine_for(empty_database.admin_url)
+    with admin.begin() as connection:
+        connection.execute(text("CREATE ROLE probe_maint LOGIN"))
+    try:
+        for database in ("postgres", "template1"):
+            query = f"SELECT has_database_privilege('probe_maint', '{database}', 'CONNECT')"
+            assert scalar(admin, query) is False, database
+    finally:
+        with admin.begin() as connection:
+            connection.execute(text("DROP ROLE probe_maint"))
+
+
+def test_functions_from_migrations_are_not_public(
+    empty_database: Database, engine_for: EngineFor
+) -> None:
+    migrator = engine_for(empty_database.migrator_url)
+    with migrator.begin() as connection:
+        connection.execute(
+            text("CREATE FUNCTION probe_fn() RETURNS int LANGUAGE sql AS 'SELECT 1'")
+        )
+    try:
+        query = "SELECT has_function_privilege('shiptrace_app', 'probe_fn()', 'EXECUTE')"
+        assert scalar(migrator, query) is False
+    finally:
+        with migrator.begin() as connection:
+            connection.execute(text("DROP FUNCTION probe_fn()"))
+
+
+def test_alembic_cli_works_from_any_directory(
+    empty_database: Database, engine_for: EngineFor, tmp_path: Path
+) -> None:
+    root = Path(__file__).parents[2]
+    env = {**os.environ, "SHIPTRACE_MIGRATOR_DATABASE_URL": empty_database.migrator_url}
+    arguments = [sys.executable, "-m", "alembic", "-c", str(root / "alembic.ini")]
+    subprocess.run([*arguments, "upgrade", "head"], cwd=tmp_path, env=env, check=True)
+    migrator = engine_for(empty_database.migrator_url)
+    assert scalar(migrator, "SELECT version_num FROM alembic_version") == expected_schema().head
+    subprocess.run([*arguments, "downgrade", "base"], cwd=tmp_path, env=env, check=True)
+    with migrator.begin() as connection:
+        connection.execute(text("DROP TABLE alembic_version"))

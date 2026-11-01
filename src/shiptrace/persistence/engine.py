@@ -7,6 +7,7 @@ from sqlalchemy.engine import Engine
 
 IDLE_IN_TRANSACTION_TIMEOUT_MS = 10_000
 POOL_RECYCLE_SECONDS = 1800
+TCP_USER_TIMEOUT_MS = 5000  # statement_timeout is server-side; this bounds a silent network.
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ def build_engine(url: str, options: DatabaseOptions) -> Engine:
         pool_pre_ping=True,
         connect_args={
             "connect_timeout": options.connect_timeout_seconds,
+            "tcp_user_timeout": TCP_USER_TIMEOUT_MS,
             "options": session_options,
         },
     )
