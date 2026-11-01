@@ -41,7 +41,7 @@ container. Scanners run in CI or through `uv tool`, and are not assumed on the h
 | Hypothesis, Schemathesis | Arrive with P1, P2 | Dependencies are added when first used |
 | Ruff / mypy | 0.17.3 / 2.4.1 | |
 | import-linter | 2.15 | Layer contracts |
-| gitleaks | 8.30.1, image by digest | `.gitleaks.toml` allows only the `gha-<run>-<attempt>` format |
+| gitleaks | 8.30.1, `sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f` | `.gitleaks.toml` allows only the `gha-<run>-<attempt>` format |
 | pip-audit / zizmor | Arrive with P5 | |
 
 Compatibility proof: `docs/engineering/VERIFICATION_LOG.md`. Runtime behaviour of the installed

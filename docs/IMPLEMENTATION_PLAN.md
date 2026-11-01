@@ -52,7 +52,7 @@ then contract migrations are forbidden.
 | D2 | Default branch | **Done: `main`** | Repository metadata expects `main`; `master` has no commits yet, so it is free now |
 | D3 | First commit of the foundation | **Done, signed** | Worktrees and hook protection for tracked migrations need history |
 | D4 | Enable OS sandbox | Apply guard patch v3, which holds the proven config | Turns the agent guardrails into a real boundary |
-| D5 | Accepted MVP risks (six) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
+| D5 | Accepted MVP risks (eight) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
 | D6 | Dashboard accounts (ADR-0006) | Approve before P2 | Replaces the rejected token sign-in |
 | D8 | Commit email | Decide before any push | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
 | D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The guard correctly stopped me checking |

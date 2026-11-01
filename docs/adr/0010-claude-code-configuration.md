@@ -43,7 +43,8 @@ active** until the owner applies `docs/engineering/proposals/guard-update-v3.pat
 - The sandbox refuses to start when unavailable, and forbids unsandboxed retries.
 - `scripts/`, Compose files, `pyproject.toml`, `uv.lock`, `.venv`, `.git/config` and `.gitleaks.toml`
   are read-only to sandboxed commands, and hooks block the edit tools on them. `UV_NO_SYNC` stops
-  excluded commands from rebuilding `.venv`. Dependency changes become owner actions.
+  `uv run` rebuilding `.venv`, while the smoke test's explicit `uv sync` installs only from the
+  protected lockfile. Dependency changes become owner actions.
 
 **What remains.** Approval is the only control over the full run. `scripts/verify.sh` runs `src/`
 and `tests/`, which the agent can edit, with full access, so approving it means trusting that code.

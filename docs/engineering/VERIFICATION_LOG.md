@@ -104,7 +104,7 @@ Commands below were run on the final commit unless stated. See the section at th
 | V30 | Sandbox experiments in throwaway clones | Refuses to start without `socat` (exit 1). Signing fails inside. An edited excluded script escaped and wrote to `$HOME`. Relative `denyWrite` does nothing through `--settings`, works in project settings |
 | V31 | Pre-commit hook, test first | Tests failed first. It then blocked three of my own commits; two were bugs in the hook itself, now fixed with tests. Review found Ruff could echo a staged secret; fixed, and tested |
 | V32 | Smoke script | First version **would have exited 0 on failure**, because a trap overwrote the status, and leaked a `sleep`. Both fixed. Review found it reintroduced the port race and allowed Compose override files. Both fixed |
-| V33 | Independent P0 gate review | Three project reviewers. Verdict at that commit: **not passed**. All confirmed findings fixed or recorded here |
+| V33 | Independent P0 gate review | Three project reviewers. Verdict at that commit: **not passed**. Findings itemized under V33 below |
 | V34 | Guard patch v3, on a copy | 82 new subtests failed first, then passed; 18 of 18 mutants killed. **Not applied to the repository** |
 | V35 | v3 as real project settings in a throwaway clone | Blocked: `scripts/*`, new files in `scripts/`, Compose files including overrides, `pyproject.toml`, `uv.lock`, `.venv`, `.git/config`, `.gitleaks.toml`, and renaming `scripts/`. `.env` unreadable. `src/` writable. Fast gates pass inside the sandbox. Edited `verify.sh` and `git commit` both need approval, and neither ran |
 
@@ -118,7 +118,7 @@ any non-zero exit, and one violation failed before reaching the step it claimed 
 |---|---|---|
 | V36 | `scripts/check_gates.py`: full-gate baseline, then 24 violations, each needing exit 1 and a named marker | Baseline exit 0. 24 of 24 caught. The stricter check first reported 6 misses: 3 wrong markers, and 3 that exposed a real pre-commit crash on non-UTF-8 content, now fixed with a test |
 | V37 | Forced smoke failures: broken migration, readiness never recovering, app crash, outage reported ready, broken bootstrap SQL, total timeout, signal mid-run, missing Docker | Each gave the expected exit code (1, 130 or 2) and left 0 containers and 0 volumes |
-| V38 | Fresh `git clone`, `uv sync --locked`, `scripts/verify.sh`; smoke 5 times; integration 10 times | Exit 0. 97 tests, 95% coverage, mypy clean on 28 files, 3 of 3 contracts. Smoke 5 of 5. Integration 10 of 10. Nothing left behind |
+| V38 | Fresh `git clone`, `uv sync --locked`, `scripts/verify.sh`; smoke 5 times; integration 10 times | Exit 0. 97 tests, 95% coverage, mypy clean on 28 files, 3 of 3 contracts. Smoke 5 of 5. Integration 10 of 10. Nothing left behind. Superseded by the one-command run below |
 
 Guard patch v3 is `1865b1f0550403ae…` by SHA-256, and `git apply --check` passes at this commit.
 
@@ -130,3 +130,45 @@ Guard patch v3 is `1865b1f0550403ae…` by SHA-256, and `git apply --check` pass
 - An in-flight request during SIGTERM (AC17, P3).
 - `transaction_per_migration`, real pool exhaustion, and a real network blackhole.
 - Workflow lockfile and attestation tooling with local gh 2.46.0.
+
+### V33 findings and dispositions
+
+| Finding | Disposition |
+|---|---|
+| Guard: case-sensitive keys, `GIT_CONFIG_KEY_0`, separated assignments, `--no-gpg-sign` on merge and friends | Fixed in patch v3 |
+| `autoAllowBashIfSandboxed` weakens prompts; `.env` and other credential files readable | Fixed in v3 by deny lists; setting kept |
+| `compose.override.yaml` bypass | Fixed: `COMPOSE_FILE` in smoke, protected in v3 |
+| `.venv` writable and run outside the sandbox | Fixed in v3 |
+| Only named files protected; hook shebangs lack `-I` | Fixed: all of `scripts/` in v3; shebangs changed |
+| `check_history` accepted any key | Fixed: key ID and author pinned |
+| Ruff could echo a staged secret | Fixed, tested |
+| `.git/config` writable; path traversal in file guard | Fixed in v3 |
+| Quoted paths, binary files, deleted lockfile in pre-commit | Fixed, tested |
+| Smoke: truncated log, unchecked grep, second interrupt, port race | Fixed |
+| `#` lines hid attribution in commit messages | Fixed, tested |
+| `check_gates` accepted any non-zero exit; outage case failed early | Fixed with markers and a full baseline |
+| `known` revisions untested; Layers contract unproven | Fixed, tested |
+| `lockfile`, `boundaries` and missing `uv` untested | Fixed, tested or proven by `check_gates` |
+| Lifespan not run in a wiring test; sleep used to synchronize; tautological test | Fixed |
+| Stale documents | Fixed |
+| Secret pattern lists duplicated in two files | Accepted: hooks are protected, so sharing would couple them |
+| `check_gates.py` has no doc reference | Fixed: named in this log and the plan |
+| `SMOKE_*` overrides unused | Kept: the timeout override is how the timeout path is tested |
+| `conftest` retry matches only Docker Desktop text | Accepted for this machine; revisit in P5 for CI |
+
+### Final re-judgement of P0
+
+The final review found `.importlinter` could override `pyproject.toml`. Confirmed, then fixed by
+naming the config, with a new `check_gates` case. It also found clustered `-aSKEY`, `sandbox`
+removal passing `check_repo`, and unverified `.git/commondir`. Outcomes:
+
+- `.importlinter`: reproduced (`Contracts: 0 kept`, exit 0, violation unnoticed), then fixed.
+- Clustered `-aSKEY`: fixed in patch v3, with a test and a mutant.
+- `sandbox` removal: `check_repo.py` still passes it, because the block does not exist until the
+  owner applies v3. Open: require it in the commit that applies v3.
+- `.git/commondir`: the probe did not create it. Adding it to `denyWrite` was tried and **broke git in the sandbox**,
+  because the sandbox mounts a placeholder over a path that does not exist. Removed. It stays a
+  residual risk, controlled by approving each `git commit`.
+
+Patch v3 after these changes: 83 new subtests failed first then passed, 19 of 19 mutants killed,
+and the live clone test was repeated.
