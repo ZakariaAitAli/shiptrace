@@ -57,8 +57,11 @@ def test_docs_are_present_when_enabled() -> None:
 
 def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
     release = threading.Event()
+    threadpool_limit = 40
+    occupied = threading.Semaphore(0)
 
     def stuck() -> bool:
+        occupied.release()
         release.wait(10)
         return False
 
@@ -67,7 +70,8 @@ def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="http://test") as client:
             waiting = [asyncio.create_task(client.get("/readyz")) for _ in range(60)]
-            await asyncio.sleep(0.1)
+            for _ in range(threadpool_limit):
+                await asyncio.to_thread(occupied.acquire, True, 5)
             try:
                 response = await asyncio.wait_for(client.get("/healthz"), timeout=2)
             finally:

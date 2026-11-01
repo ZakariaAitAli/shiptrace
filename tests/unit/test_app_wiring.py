@@ -29,6 +29,6 @@ def test_local_exposes_api_documentation() -> None:
 
 
 def test_app_starts_while_database_is_unreachable() -> None:
-    client = app_for("local", "")
-    assert client.get("/healthz").status_code == 200
-    assert client.get("/readyz").status_code == 503
+    with app_for("local", "") as client:  # `with` runs the lifespan, as a real server does.
+        assert client.get("/healthz").status_code == 200
+        assert client.get("/readyz").status_code == 503
