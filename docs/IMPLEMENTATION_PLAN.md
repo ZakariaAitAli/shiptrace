@@ -37,9 +37,9 @@ Pre-commit hook, repeatable smoke script, gate-violation proof and readiness rev
 the verification log, entries V29 to V50.
 
 Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
-the owner's external gate at `b7ceec8`. The final security review failed on two confirmed sandbox escapes; fixes are in `b6fefee` and
-`16457ff`. **Open:** the owner repeats the external gate, then a focused security review reassesses
-both findings.
+the owner's external gate at `b7ceec8`. The external gate passed at `1822839`, but the focused security review at `c8b5769` failed on three
+confirmed blockers. **Open:** the owner decides how commits are made, applies the deletion patch,
+and repeats the external gate and a focused review.
 P1 waits for an independent P0 PASS and the owner's authorization.
 
 ## Standing obligation

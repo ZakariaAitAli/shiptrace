@@ -248,3 +248,18 @@ them; Claude Code did not run or observe this execution.
 | V61 | `scripts/p0_gate.sh`: clean checkout and clone, `scripts/verify.sh` | 97 tests passed, 95% coverage, 3 of 3 architecture contracts |
 | V62 | Smoke three times; `scripts/check_gates.py` | Smoke 3 of 3. 34 of 34 deliberate violations detected |
 | V63 | Every commit reachable from HEAD must be `G` | 47 of 47 valid. `P0 GATE: ALL STEPS PASSED`, exit 0. Supersedes V48 to V50, and closes the signature gap in V46 for the commits since then |
+
+## Focused final security review, at `c8b5769`
+
+Verdict: **FAIL**. High findings H1 and H2 were each partly resolved. `format_python.py` is closed,
+and `.git/config` is protected. Three new blockers were confirmed by contained execution in
+`$TMPDIR`; no escape from the sandbox was performed.
+
+| ID | Finding | Confirmed by | Disposition |
+|---|---|---|---|
+| V64 | `guard_files.py` runs `git ls-files` outside the sandbox, and a planted `.git/commondir` can supply `core.fsmonitor` | Planted fsmonitor ran in a throwaway repo | Owner patch deletes that check. `pre_commit.py` still blocks applied migration edits |
+| V65 | Claude Code strips wrappers such as `nohup`, `timeout` and `NO_COLOR=1` before matching exclusions, but `LEAVES_SANDBOX` was anchored | 6 of 6 wrapped forms passed from a nested directory | Owner patch removes the anchor |
+| V66 | `pre_commit.py` runs `lint-imports` from the root, which imports modules from its working directory | Planted module ran | Owner patch deletes that check. `scripts/verify.sh` still runs it |
+| V67 | Time-of-check gap: a background sandboxed process can plant `.git/commondir` during an approval prompt | Reasoned, not executed | Open, for the owner. Only moving `git commit` out of the agent's hands closes it |
+
+V61 to V63 describe `1822839`, and do not cover these fixes.
