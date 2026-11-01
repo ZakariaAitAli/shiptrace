@@ -81,7 +81,8 @@
   },
   "env": {
     "UV_CACHE_DIR": ".uv-cache",
-    "UV_NO_SYNC": "1"
+    "UV_NO_SYNC": "1",
+    "UV_NO_CONFIG": "1"
   },
   "sandbox": {
     "enabled": true,

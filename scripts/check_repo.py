@@ -135,8 +135,9 @@ def check_settings() -> None:
         errors.append(f"settings.json: network domains are not permitted: {sorted(extra)}")
     if extra := set(sandbox.get("excludedCommands", [])) - ALLOWED_EXCLUSIONS:
         errors.append(f"settings.json: sandbox exclusions are not permitted: {sorted(extra)}")
-    if settings.get("env", {}).get("UV_NO_SYNC") != "1":
-        errors.append("settings.json: UV_NO_SYNC must stay set")
+    for variable in ("UV_NO_SYNC", "UV_NO_CONFIG"):
+        if settings.get("env", {}).get(variable) != "1":
+            errors.append(f"settings.json: {variable} must stay set")
     excluded = {f"Bash({command})" for command in sandbox.get("excludedCommands", [])}
     if not excluded <= set(permissions.get("ask", [])):
         errors.append("settings.json: every sandbox exclusion must need approval per run")
