@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import pytest
+from docker.errors import APIError
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from testcontainers.community.postgres import PostgresContainer
@@ -18,6 +19,7 @@ IMAGE = (
     "postgres:18.6-trixie@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81"
 )
 BOOTSTRAP = Path(__file__).parents[2] / "deploy/postgres/bootstrap_roles.sql"
+PORT_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -54,38 +56,38 @@ def free_port() -> int:
 
 
 def start_database() -> Database:
-    port = free_port()
     # Passwords hold URL-significant characters so that encoding bugs surface here.
-    database = Database(
-        container=None,  # type: ignore[arg-type]
-        port=port,
-        admin_password=secrets.token_urlsafe(16),
-        app_password=secrets.token_urlsafe(16) + "/@:%",
-        migrator_password=secrets.token_urlsafe(16) + "/@:%",
-    )
-    container = (
-        PostgresContainer(
-            IMAGE,
-            username="shiptrace_admin",
-            password=database.admin_password,
-            dbname="shiptrace",
-            driver="psycopg",
+    admin_password = secrets.token_urlsafe(16)
+    app_password = secrets.token_urlsafe(16) + "/@:%"
+    migrator_password = secrets.token_urlsafe(16) + "/@:%"
+    for attempt in range(1, PORT_ATTEMPTS + 1):
+        # A fixed port survives a container restart, which the outage test needs. The port is
+        # chosen here, but Docker Desktop binds it on Windows, where it may be reserved.
+        port = free_port()
+        container = (
+            PostgresContainer(
+                IMAGE,
+                username="shiptrace_admin",
+                password=admin_password,
+                dbname="shiptrace",
+                driver="psycopg",
+            )
+            .with_env("SHIPTRACE_APP_PASSWORD", app_password)
+            .with_env("SHIPTRACE_MIGRATOR_PASSWORD", migrator_password)
+            .with_volume_mapping(
+                str(BOOTSTRAP), "/docker-entrypoint-initdb.d/10-bootstrap-roles.sql", "ro"
+            )
+            .with_bind_ports(5432, port)
         )
-        .with_env("SHIPTRACE_APP_PASSWORD", database.app_password)
-        .with_env("SHIPTRACE_MIGRATOR_PASSWORD", database.migrator_password)
-        .with_volume_mapping(
-            str(BOOTSTRAP), "/docker-entrypoint-initdb.d/10-bootstrap-roles.sql", "ro"
-        )
-        .with_bind_ports(5432, port)
-    )
-    container.start()
-    return Database(
-        container=container,
-        port=port,
-        admin_password=database.admin_password,
-        app_password=database.app_password,
-        migrator_password=database.migrator_password,
-    )
+        try:
+            container.start()
+        except APIError as error:
+            container.stop()
+            if "ports are not available" in str(error) and attempt < PORT_ATTEMPTS:
+                continue
+            raise
+        return Database(container, port, admin_password, app_password, migrator_password)
+    raise AssertionError("unreachable")
 
 
 @pytest.fixture(scope="session")
