@@ -1,12 +1,12 @@
 """Entry point for the one-shot migration step that runs before a rollout."""
 
-import os
-
+from shiptrace.bootstrap.settings import MigrationSettings
 from shiptrace.persistence.migrate import upgrade
 
 
 def main() -> None:
-    upgrade(os.environ["SHIPTRACE_MIGRATOR_DATABASE_URL"])
+    settings = MigrationSettings()  # type: ignore[call-arg]
+    upgrade(settings.migrator_database_url.get_secret_value())
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from shiptrace.bootstrap.settings import Settings, UnsafeConfiguration
+from shiptrace.bootstrap.settings import MigrationSettings, Settings, UnsafeConfiguration
 
 SENTINEL = "sentinel-password-do-not-log"
 
@@ -108,7 +108,7 @@ def test_limits_cannot_be_disabled(field: str, value: int) -> None:
 
 
 def test_lock_timeout_must_be_shorter_than_statement_timeout() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(UnsafeConfiguration):
         build(db_lock_timeout_ms=6000, db_statement_timeout_ms=5000)
 
 
@@ -137,3 +137,78 @@ def test_invalid_values_are_not_echoed_in_error_text() -> None:
     with pytest.raises(ValidationError) as caught:
         build(None, "local", db_pool_size=SENTINEL)
     assert SENTINEL not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "database_url",
+    [
+        f"postgresql+psycopg://shiptrace_app:{SENTINEL}/shiptrace",
+        f"postgresql+psycopg://shiptrace_app:p{chr(64)}x:{SENTINEL}{chr(64)}db/shiptrace",
+    ],
+)
+def test_password_parsed_as_a_port_is_not_echoed(database_url: str) -> None:
+    with pytest.raises(UnsafeConfiguration) as caught:
+        build(database_url)
+    assert SENTINEL not in str(caught.value)
+    assert caught.value.__cause__ is None
+
+
+def test_cross_field_refusal_carries_no_raw_input() -> None:
+    with pytest.raises(UnsafeConfiguration) as caught:
+        build(db_lock_timeout_ms=6000, db_statement_timeout_ms=5000)
+    assert SENTINEL not in repr(caught.value)
+
+
+def test_only_the_runtime_role_may_connect() -> None:
+    with pytest.raises(UnsafeConfiguration):
+        build(url(user="some_rds_master"))
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "?user=shiptrace_admin",
+        "?host=elsewhere",
+        "?hostaddr=10.0.0.1",
+        "?dbname=postgres",
+        "?options=-c%20statement_timeout%3D0",
+        "?service=x",
+        "?passfile=x",
+    ],
+)
+def test_query_cannot_change_the_connection_target(query: str) -> None:
+    with pytest.raises(UnsafeConfiguration):
+        build(url(query=query))
+
+
+def test_tls_options_are_allowed_in_the_query() -> None:
+    query = "?sslmode=verify-full&sslrootcert=/etc/ssl/rds.pem"
+    assert build(url(query=query), environment="production")
+
+
+def test_production_keeps_the_readiness_cache() -> None:
+    query = "?sslmode=verify-full"
+    with pytest.raises(UnsafeConfiguration):
+        build(url(query=query), environment="production", readiness_cache_seconds=0)
+
+
+def migration(database_url: str, environment: str = "local") -> MigrationSettings:
+    values = {"environment": environment, "migrator_database_url": database_url}
+    return MigrationSettings.model_validate(values)
+
+
+def test_migrator_url_is_accepted_for_the_migrator_role() -> None:
+    assert migration(url(user="shiptrace_migrator")).environment == "local"
+
+
+@pytest.mark.parametrize("user", ["shiptrace_app", "shiptrace_admin", "postgres"])
+def test_migrations_refuse_other_roles(user: str) -> None:
+    with pytest.raises(UnsafeConfiguration):
+        migration(url(user=user))
+
+
+def test_production_migrations_require_verified_tls() -> None:
+    with pytest.raises(UnsafeConfiguration):
+        migration(url(user="shiptrace_migrator"), "production")
+    query = "?sslmode=verify-full"
+    assert migration(url(user="shiptrace_migrator", query=query), "production")
