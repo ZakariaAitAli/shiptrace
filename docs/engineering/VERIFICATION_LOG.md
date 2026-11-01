@@ -225,3 +225,15 @@ Owner patch built in a throwaway clone: 15 hook subtests and 1 pre-commit test f
 `scripts/verify.sh --fast` passes there. 9 of 11 mutants killed; the 2 survivors are the two layers
 of the `format_python.py` fix, each covering the other, and removing both together fails the tests.
 The Docker gates have not run on this patch, so V48 to V50 no longer describe the final state.
+
+## Final fixes applied by the owner
+
+| ID | Check | Outcome |
+|---|---|---|
+| V56 | Owner patch `p0-final-fixes` against the reviewed copy | Working diff byte-identical, 10 files. Committed as `b6fefee` |
+| V57 | Live location test, session really in `src/`, each command harmless if the guard failed | `git commit --dry-run`, `scripts/verify.sh` and `scripts/smoke.sh` refused; `git status` allowed. A Python write at the root was formatted through the protected `.venv`; a write from `src/` was left unformatted. The `.git/commondir` refusal and a nested project's own `.venv` are unit-tested only |
+| V58 | `scripts/verify.sh --fast` after `b6fefee` | **Failed**: a regression from that patch. The `uv.toml` deny entry mounts a placeholder that `uv` fails to read, in the real project only, so the clone test missed it |
+| V59 | Owner patch `uv-no-config` against the reviewed copy | Working diff byte-identical, 2 files. Sets `UV_NO_CONFIG=1`, and `check_repo.py` requires it. Removing it is caught |
+| V60 | `scripts/verify.sh --fast` after restart, no manually set variables | Exit 0 at `16457ff`, with the setting inherited from project settings: 76 unit tests, mypy clean on 28 files, 3 of 3 contracts. Docker gates did not run |
+
+V48 to V50 describe `b7ceec8`. The external gate must run again on the final commit.
