@@ -28,10 +28,10 @@ fetching suffice, and each server widens the injection surface.
 
 **Limits, stated plainly.** Text-based command guards can be evaded by indirection, such as a
 written script, or by a tool that rewrites files, as `ruff format .` once did to a hook. They stop
-mistakes, and are not a security boundary. The OS sandbox is the stronger control, and is **not
-active** until the owner applies `docs/engineering/proposals/guard-update-v3.patch`.
+mistakes, and are not a security boundary. The OS sandbox is the stronger control, and is active
+through guard patch v3, applied by the owner in `a0ee681`.
 
-**Sandbox design (proposal v3, tested in a throwaway clone).**
+**Sandbox design, as applied.**
 
 | Tier | Commands | Runs | Approval |
 |---|---|---|---|

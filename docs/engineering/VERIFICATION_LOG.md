@@ -196,3 +196,14 @@ Commit `a0ee681` holds the applied guards and removes the obsolete proposal.
 | V45 | `scripts/verify.sh` through its exclusion, main checkout | Exit 0 by final output: 97 tests, 95% coverage, smoke passed |
 | V46 | Commit through the `git commit` exclusion | Hooks ran. Correct identity and key ID, no attribution. Status `E` inside the sandbox, so the owner must confirm a good signature |
 | V47 | Guard refused an edit to `scripts/check_repo.py` | Correct by design, and a flaw in it: the owner's requested change could not be made. Supplied as an owner patch; 11 of 11 rule removals caught in a throwaway clone |
+
+## External P0 gate, run by the owner
+
+Run by the owner outside the sandbox, on the pushed commit `b7ceec8`. Results below are as the owner
+reported them; Claude Code did not run or observe this execution.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V48 | `scripts/p0_gate.sh`: clean clone, then `scripts/verify.sh` | Checkout clean. Exit 0. 97 passed, 95% coverage, mypy clean on 28 files, 3 of 3 contracts, history OK |
+| V49 | Smoke, three times; `scripts/check_gates.py` | Smoke 3 of 3. Baseline exit 0. 33 violations, 0 missed, exit 0 |
+| V50 | Every commit reachable from HEAD must be `G` | 42 commits, none unverified. Gate exit 0, `P0 GATE: ALL STEPS PASSED`. Supersedes V39 to V41, and closes the signature check left open by V46 |

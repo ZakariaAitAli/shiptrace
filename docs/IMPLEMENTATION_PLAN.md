@@ -31,14 +31,14 @@ Evidence is in the verification log, entries V14 to V28.
 5. App factory, `/healthz`, `/readyz`; a role bootstrap script; Alembic with a first migration that applies grants.
 6. Extend `scripts/verify.sh` to run all gates.
 
-## P0.2 close the P0 gate: implemented, one owner step left
+## P0.2 close the P0 gate: implemented, final review pending
 
 Pre-commit hook, repeatable smoke script, gate-violation proof and readiness review are done. See
-the verification log, entries V29 to V38.
+the verification log, entries V29 to V50.
 
-Guard patch v3 is applied and committed. **Open:** the owner applies the patch that makes
-`check_repo.py` enforce the sandbox, because `scripts/` is now protected. P1 waits for an independent
-P0 PASS.
+Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
+the owner's external gate at `b7ceec8`. **Open:** the final independent review. P1 waits for an
+independent P0 PASS and the owner's authorization.
 
 ## Standing obligation
 
@@ -49,10 +49,10 @@ then contract migrations are forbidden.
 
 | # | Decision | Recommendation | Why it matters |
 |---|---|---|---|
-| D1 | Repository visibility | **Decided: public**, once approved to publish | Artifact attestations need public repos below Enterprise Cloud; without this, AC22 needs a different provenance design |
+| D1 | Repository visibility | **Done: public** | Artifact attestations need public repos below Enterprise Cloud; without this, AC22 needs a different provenance design |
 | D2 | Default branch | **Done: `main`** | Repository metadata expects `main`; `master` has no commits yet, so it is free now |
 | D3 | First commit of the foundation | **Done, signed** | Worktrees and hook protection for tracked migrations need history |
-| D4 | Enable OS sandbox | Apply guard patch v3, which holds the proven config | Turns the agent guardrails into a real boundary |
+| D4 | Enable OS sandbox | **Done: active through guard patch v3** | Turns the agent guardrails into a real boundary |
 | D5 | Accepted MVP risks (eight) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
 | D6 | Dashboard accounts (ADR-0006) | **Accepted**, subject to P2 security tests | Replaces the rejected token sign-in |
 | D8 | Commit email | **Accepted as public** by the owner | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
