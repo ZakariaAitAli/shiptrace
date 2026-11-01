@@ -76,6 +76,11 @@ def check_settings() -> None:
         and sandbox.get("allowUnsandboxedCommands") is False
     ):
         errors.append("settings.json: sandbox must fail closed and forbid unsandboxed retries")
+    excluded = {f"Bash({command})" for command in (sandbox or {}).get("excludedCommands", [])}
+    if not excluded <= set(permissions.get("ask", [])):
+        errors.append("settings.json: every sandbox exclusion must need approval per run")
+    if excluded & set(permissions.get("allow", [])):
+        errors.append("settings.json: a sandbox exclusion must not be auto-allowed")
 
 
 def check_documents() -> None:

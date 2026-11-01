@@ -1,0 +1,364 @@
+--- a/.claude/hooks/format_python.py
++++ b/.claude/hooks/format_python.py
+@@ -13,6 +13,8 @@
+     raw_path = payload.get("tool_input", {}).get("file_path", "")
+     cwd = Path(payload.get("cwd", "."))
+     if not raw_path.endswith(".py") or ".claude/" in raw_path:
++        return
++    if not (cwd / raw_path).resolve().is_relative_to(cwd.resolve()):
+         return
+     if not (cwd / "pyproject.toml").exists() or shutil.which("uv") is None:
+         return
+--- a/.claude/hooks/guard_bash.py
++++ b/.claude/hooks/guard_bash.py
+@@ -16,6 +16,10 @@
+     r"|\.tfstate"
+ )
+ SECRET_ENV_FILE = re.compile(r"(^|[\s/=\"'])\.env(\.(?!example\b)[\w-]+)?($|[\s\"';|&)*])")
++CONFIG_ENV = re.compile(
++    r"\b(GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)|GIT_CONFIG_(COUNT|PARAMETERS|GLOBAL|SYSTEM|NOSYSTEM|KEY_\d+)"
++    r"|HOME|XDG_CONFIG_HOME|GNUPGHOME)=\S*\s+(\S+/)?git\b"
++)
+ BYPASS = re.compile(r"dangerously-skip-permissions|bypassPermissions|dangerouslyDisableSandbox")
+ PIPE_TO_SHELL = re.compile(r"\b(curl|wget)\b[^|;&]*\|\s*(sudo(\s+-\S+)*\s+)?(ba|z|da)?sh\b")
+ SUBSTITUTION_TO_SHELL = re.compile(r"\b(ba|z|da)?sh\b[^|;&]*(\$\(|<\(|`)\s*(curl|wget)\b")
+@@ -24,6 +28,8 @@
+ PROTECTED_TARGET = (
+     r"(\S*/)?(uv\.lock|actions\.lock|\.claude/settings(\.local)?\.json)"
+     r"|\S*\.claude/hooks/\S*|\S*migrations/versions/\S*"
++    r"|(\./)?scripts/(verify\.sh|smoke\.sh|pre_commit\.py|commit_msg\.py|install_git_hooks\.sh)"
++    r"|(\./)?compose\.yaml"
+ )
+ SHELL_WRITE = re.compile(rf"(>>?\s*|\btee\s+(-\S+\s+)*)({PROTECTED_TARGET})")
+ SED_IN_PLACE = re.compile(rf"\bsed\b[^|;&]*\s-i\S*[^|;&]*\s({PROTECTED_TARGET})")
+@@ -31,11 +37,23 @@
+ SHELL_KEYWORDS = {"if", "then", "elif", "else", "for", "while", "until", "do", "!", "{"}
+ WRAPPERS = {"sudo", "command", "env", "time", "nohup", "nice", "exec", "xargs", "timeout"}
+ SHELLS = {"sh", "bash", "zsh", "dash"}
+-GUARDED = {"git", "gh", "terraform", "tofu", "docker", "rm", "aws", "eval"} | SHELLS
++GPG_AGENT_TOOLS = {"gpg-connect-agent", "gpg-preset-passphrase"}
++GUARDED = {"git", "gh", "gpg", "terraform", "tofu", "docker", "rm", "aws", "eval"}
++GUARDED |= SHELLS | GPG_AGENT_TOOLS
+ TERRAFORM_DENIED = {"apply", "destroy", "import", "taint", "untaint", "force-unlock"}
+ TERRAFORM_STATE_DENIED = {"rm", "mv", "push", "pull", "replace-provider"}
+ GIT_OPTIONS_WITH_VALUE = {"-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path"}
+ GH_READ_ONLY_PR = {"list", "view", "diff", "status", "checks"}
++GIT_PROTECTED_KEYS = ("commit.gpgsign", "tag.gpgsign", "gpg.", "user.", "alias.")
++GIT_COMMIT_DENIED = (
++    "--amend", "--author", "--reset-author", "--no-gpg-sign", "--no-verify", "--date", "--gpg-sign",
++)
++GIT_HISTORY_DENIED = {"rebase", "filter-branch", "filter-repo", "commit-tree", "update-ref", "replace"}
++GPG_DENIED = (
++    "--export-secret-keys", "--export-secret-subkeys", "--passphrase", "--passphrase-fd",
++    "--passphrase-file", "--pinentry-mode", "--change-passphrase", "--delete-secret-keys",
++    "--delete-secret-and-public-key", "--edit-key",
++)
+ 
+ 
+ def split_segments(command: str) -> list[list[str]]:
+@@ -66,6 +84,12 @@
+     return argv[index:]
+ 
+ 
++def names_long_option(args: list[str], options: tuple[str, ...]) -> bool:
++    """True if an argument is one of the options, or a prefix git or gpg would expand to it."""
++    names = (arg.split("=", 1)[0] for arg in args if arg.startswith("--") and len(arg) > 2)
++    return any(option.startswith(name) for name in names for option in options)
++
++
+ def git_subcommand(args: list[str]) -> tuple[str, list[str]]:
+     index = 0
+     while index < len(args) and args[index].startswith("-"):
+@@ -74,15 +98,23 @@
+ 
+ 
+ def check_git(args: list[str]) -> str | None:
+-    if "-c" in args and any("core." in value or "alias." in value for value in args):
+-        return "git -c overriding core or alias settings"
++    if any(arg.startswith("--config-env") for arg in args):
++        return "git --config-env"
++    if "-c" in args and any(
++        "core." in value or value.startswith(GIT_PROTECTED_KEYS) for value in args
++    ):
++        return "git -c overriding protected settings"
+     subcommand, rest = git_subcommand(args)
+     if subcommand == "push" or (subcommand == "subtree" and "push" in rest):
+         return "git push"
+-    if subcommand == "commit" and (
+-        "--no-verify" in rest or any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", a) for a in rest)
+-    ):
++    if subcommand == "commit" and any(re.fullmatch(r"-[a-zA-Z]*n[a-zA-Z]*", a) for a in rest):
+         return "git commit --no-verify"
++    if subcommand == "commit" and names_long_option(rest, GIT_COMMIT_DENIED):
++        return "git commit option that rewrites history, identity, hooks or signing"
++    if subcommand == "commit" and any(re.fullmatch(r"-S.+", a) for a in rest):
++        return "git commit with another signing key"
++    if subcommand in GIT_HISTORY_DENIED:
++        return f"git {subcommand} rewrites history or bypasses signing"
+     if subcommand == "reset" and "--hard" in rest:
+         return "git reset --hard"
+     if subcommand == "clean" and (
+@@ -95,6 +127,13 @@
+         return "git checkout -- discards working changes"
+     if subcommand == "config" and ("--global" in rest or "core.hooksPath" in rest):
+         return "git config changing global settings or hooks"
++    if (
++        subcommand == "config"
++        and "--get" not in rest
++        and len(rest) > 1
++        and any(arg.startswith(GIT_PROTECTED_KEYS) for arg in rest)
++    ):
++        return "git config changing identity, aliases or signing"
+     if subcommand == "remote" and rest[:1] in (["add"], ["set-url"]):
+         return "changing git remotes"
+     return None
+@@ -104,7 +143,13 @@
+     if not args:
+         return None
+     group, action = args[0], args[1] if len(args) > 1 else ""
+-    if group in {"search", "help"}:
++    if group in {"search", "help", "--version"}:
++        return None
++    if args[-1] == "--help" and len(args) <= 3:  # Longer forms may be a flag's value.
++        return None
++    if group == "attestation" and action == "verify":
++        return None
++    if group in {"repo", "workflow", "release"} and action in {"list", "view"}:
+         return None
+     if group == "auth" and action == "status" and not {"--show-token", "-t"} & set(args):
+         return None
+@@ -112,7 +157,7 @@
+         return None
+     if group == "pr" and action in GH_READ_ONLY_PR:
+         return None
+-    if group == "run" and action in {"list", "view", "watch"}:
++    if group == "run" and action in {"list", "view", "watch", "download"}:
+         return None
+     if group == "api":
+         joined = " ".join(args)
+@@ -192,6 +237,10 @@
+         return check_docker(args)
+     if program == "rm":
+         return check_rm(args)
++    if program == "gpg" and names_long_option(args, GPG_DENIED):
++        return "gpg key or passphrase handling"
++    if program in GPG_AGENT_TOOLS:
++        return "direct gpg-agent access"
+     if program == "aws" and args[:1] not in (["--version"], ["help"]):
+         return "aws (cloud access needs owner approval)"
+     return None
+@@ -202,6 +251,8 @@
+         return "command nesting too deep to check"
+     if BYPASS.search(command):
+         return "permission or sandbox bypass flag"
++    if CONFIG_ENV.search(command):
++        return "overriding Git identity or configuration through the environment"
+     if PIPE_TO_SHELL.search(command) or SUBSTITUTION_TO_SHELL.search(command):
+         return "running a download in a shell"
+     if SECRET_PATH.search(command):
+--- a/.claude/hooks/guard_files.py
++++ b/.claude/hooks/guard_files.py
+@@ -22,6 +22,11 @@
+     "*.tfvars": "may hold secrets",
+ }
+ ALLOWED_NAMES = {".env.example"}
++# Run by commands excluded from the sandbox, so they change only with the owner.
++TRUSTED_EXECUTED = re.compile(
++    r"(^|/)(scripts/(verify\.sh|smoke\.sh|pre_commit\.py|commit_msg\.py|install_git_hooks\.sh)"
++    r"|compose\.yaml)$"
++)
+ 
+ SECRET_PATTERNS = {
+     "AWS access key": r"\b(AKIA|ASIA)[0-9A-Z]{16}\b",
+@@ -58,6 +63,8 @@
+             return f"{name}: {why}"
+     if re.search(r"(^|/)\.claude/(hooks/|settings(\.local)?\.json$)", path.as_posix()):
+         return f"{name}: agent guardrails change only with the owner, who edits them directly"
++    if TRUSTED_EXECUTED.search(path.as_posix()):
++        return f"{name}: runs outside the sandbox, so it changes only with the owner"
+     if is_tracked_migration(path, cwd):
+         return f"{name}: applied migrations are immutable, add a new one"
+     return None
+--- a/.claude/hooks/tests/test_hooks.py
++++ b/.claude/hooks/tests/test_hooks.py
+@@ -87,6 +87,53 @@
+         "grep TOKEN .env.production",
+         "cat ~/.config/gh/hosts.yml",
+         "echo 'unterminated",
++        # Owner's commit and signing policy, including git's abbreviated long options.
++        "git commit --amend -m x",
++        "git commit --amen -m x",
++        "git commit --reset-author",
++        "git commit --author=x -m y",
++        "git commit --auth=x -m y",
++        "git commit --no-gpg-sign -m x",
++        "git commit --no-gpg-si -m x",
++        "git commit --no-verif -m x",
++        "git commit --gpg-sign=OTHERKEY -m x",
++        "git commit -SOTHERKEY -m x",
++        "git -c commit.gpgsign=false commit -m x",
++        "git -c user.email=x@y.z commit -m x",
++        "git --config-env=commit.gpgsign=X commit -m x",
++        "git config commit.gpgsign false",
++        "git config user.signingkey ABC",
++        "git config user.email x@y.z",
++        "git config alias.p push",
++        "git rebase -i HEAD~2",
++        "git filter-branch --all",
++        "git commit-tree HEAD^{tree} -m x",
++        "git update-ref refs/heads/main abc",
++        "git replace abc def",
++        "GIT_AUTHOR_EMAIL=x@y.z git commit -m x",
++        "GIT_COMMITTER_NAME=x git commit -m x",
++        "GIT_CONFIG_COUNT=1 git commit -m x",
++        "GIT_CONFIG_GLOBAL=/dev/null git commit -m x",
++        "GIT_CONFIG_NOSYSTEM=1 git commit -m x",
++        "HOME=/tmp/x git commit -m x",
++        "XDG_CONFIG_HOME=/tmp/x git commit -m x",
++        "GNUPGHOME=/tmp/x git commit -m x",
++        "gpg --export-secret-keys",
++        "gpg --export-secret-k",
++        "gpg --pinentry-mode loopback --sign x",
++        "gpg --change-passphrase ABC",
++        "gpg-connect-agent /bye",
++        "gpg-preset-passphrase --preset x",
++        # --help as a flag's value does not stop a write.
++        "gh issue create --title --help --body x",
++        "gh issue create --title x --body --help",
++        "gh pr merge 1 --squash --help",
++        # Scripts that excluded commands run.
++        "sed -i s/a/b/ scripts/verify.sh",
++        "echo x >> scripts/smoke.sh",
++        "echo x > scripts/pre_commit.py",
++        "echo x > scripts/commit_msg.py",
++        "tee compose.yaml",
+         # Found by the foundation review: shell structure.
+         "if true; then git push origin main; fi",
+         "for b in a b; do git push origin x; done",
+@@ -159,6 +206,26 @@
+         "grep -r pushd docs",
+         "python3 -I scripts/check_repo.py",
+         "git restore --staged a.py",
++        "gh --version",
++        "gh --help",
++        "gh pr merge --help",
++        "gh repo view",
++        "gh workflow list",
++        "gh workflow view ci.yml",
++        "gh run download 1",
++        "gh release list",
++        "gh release view v1",
++        "gh attestation verify oci://x --owner y",
++        "gh attestation --help",
++        "git config --get user.email",
++        "git config user.email",
++        "git log -1 --show-signature",
++        "gpg --list-keys",
++        "git commit --allow-empty -m x",
++        "git commit --no-edit -m x",
++        "git commit -S -m x",
++        "scripts/verify.sh --fast",
++        "cat scripts/verify.sh",
+         "git checkout -b feature",
+         "git switch main",
+         "gh auth status",
+@@ -220,6 +287,12 @@
+             "infra/terraform.tfstate.backup",
+             ".claude/settings.json",
+             ".claude/hooks/guard_bash.py",
++            "scripts/verify.sh",
++            "scripts/smoke.sh",
++            "scripts/pre_commit.py",
++            "scripts/commit_msg.py",
++            "scripts/install_git_hooks.sh",
++            "compose.yaml",
+         ]:
+             with self.subTest(path=path):
+                 self.assertEqual(self.exit_code(path), 2)
+@@ -328,6 +401,12 @@
+ 
+ 
+ class FormatPython(unittest.TestCase):
++    def test_ignores_files_outside_the_project(self) -> None:
++        with tempfile.TemporaryDirectory() as directory:
++            Path(directory, "pyproject.toml").write_text("")
++            payload = {"cwd": directory, "tool_input": {"file_path": "/nonexistent/outside.py"}}
++            self.assertEqual(run_hook("format_python.py", payload).returncode, 0)
++
+     def test_noop_without_pyproject(self) -> None:
+         with tempfile.TemporaryDirectory() as directory:
+             payload = {"cwd": directory, "tool_input": {"file_path": "broken.py"}}
+--- a/.claude/settings.json
++++ b/.claude/settings.json
+@@ -3,13 +3,14 @@
+   "permissions": {
+     "disableBypassPermissionsMode": "disable",
+     "allow": [
+-      "Bash(scripts/verify.sh)",
+       "Bash(python3 -I scripts/check_repo.py)",
+       "Bash(python3 -I .claude/hooks/tests/test_hooks.py)",
+       "Bash(uv run pytest *)",
+       "Bash(uv run ruff *)",
+       "Bash(uv run mypy *)",
+-      "Bash(uv run lint-imports *)"
++      "Bash(uv run lint-imports *)",
++      "Bash(scripts/verify.sh --fast)",
++      "Bash(uv run --frozen pytest tests/unit *)"
+     ],
+     "deny": [
+       "Read(**/.env)",
+@@ -29,6 +30,11 @@
+       "Bash(terraform apply *)",
+       "Bash(terraform destroy *)",
+       "Bash(aws *)"
++    ],
++    "ask": [
++      "Bash(scripts/verify.sh)",
++      "Bash(scripts/smoke.sh)",
++      "Bash(git commit *)"
+     ]
+   },
+   "hooks": {
+@@ -68,5 +74,42 @@
+         ]
+       }
+     ]
++  },
++  "env": {
++    "UV_CACHE_DIR": ".venv/.uv-cache"
++  },
++  "sandbox": {
++    "enabled": true,
++    "failIfUnavailable": true,
++    "allowUnsandboxedCommands": false,
++    "autoAllowBashIfSandboxed": true,
++    "excludedCommands": [
++      "scripts/verify.sh",
++      "scripts/smoke.sh",
++      "git commit *"
++    ],
++    "filesystem": {
++      "denyRead": [
++        "~/.ssh",
++        "~/.aws",
++        "~/.config/gh",
++        "~/.claude/.credentials.json",
++        "~/.gnupg"
++      ],
++      "denyWrite": [
++        "scripts/verify.sh",
++        "scripts/smoke.sh",
++        "scripts/pre_commit.py",
++        "scripts/commit_msg.py",
++        "scripts/install_git_hooks.sh",
++        "compose.yaml"
++      ]
++    },
++    "network": {
++      "allowedDomains": [
++        "pypi.org",
++        "files.pythonhosted.org"
++      ]
++    }
+   }
+ }
