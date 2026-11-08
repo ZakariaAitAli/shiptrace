@@ -348,3 +348,14 @@ session, in a scratch clone of `bf9f754`; `scripts/` is protected, so the fix is
 | V99 | After the fix, which now adds `Bash(scripts/commit.py *)` | 3 of 3 |
 | V100 | Mutants | 3 of 3 killed: the auto-allow rule removed from `check_repo.py`; an unrelated error that contains the expected marker, caught by the baseline test; the fix reverted |
 | V101 | Gate steps in the clone | Repository and history checks OK; commit messages 3, history 7, pre-commit 23, commit script 11, gate violations 3, hooks 30; lockfile current; 61 files formatted; Ruff and mypy clean; 3 of 3 contracts; 76 unit tests. `check_gates.py` needs Docker, so the owner runs it |
+
+## P0 acceptance at `05763a9`, run by the owner
+
+Run by the owner outside the sandbox on `05763a9`, the fix for V96. Results are as the owner
+reported them; Claude Code did not run or observe this execution.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V102 | `scripts/p0_gate.sh` at `05763a9` | **Passed**, exit 0. `scripts/verify.sh`: 97 tests, 95% coverage, 3 of 3 contracts. Smoke 3 of 3. Violations 33 of 33 detected, 0 missed. 54 of 54 commits GPG-verified. Supersedes V96 |
+
+P0 is accepted by the owner at `05763a9`. P1 starts from that commit.

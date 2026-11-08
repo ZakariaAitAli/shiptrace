@@ -31,17 +31,17 @@ Evidence is in the verification log, entries V14 to V28.
 5. App factory, `/healthz`, `/readyz`; a role bootstrap script; Alembic with a first migration that applies grants.
 6. Extend `scripts/verify.sh` to run all gates.
 
-## P0.2 close the P0 gate: implemented, final review pending
+## P0.2 close the P0 gate: done, accepted at `05763a9`
 
 Pre-commit hook, repeatable smoke script, gate-violation proof and readiness review are done. See
 the verification log, entries V29 to V50.
 
 Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
 the owner's external gate at `b7ceec8`. The external gate passed at `1822839`, but the focused security review at `c8b5769` failed on three
-confirmed blockers. Fixes for V64 to V67 are prepared and tested in a clone (V68 to V81): `.git`
-read-only to the sandbox, and commits only through `scripts/commit.py`. **Open:** the owner's
-real-sandbox probe, applying the patch, a focused review, and the external gate.
-P1 waits for an independent P0 PASS and the owner's authorization.
+confirmed blockers. Fixes for V64 to V67 made `.git` read-only to the sandbox and moved commits to
+`scripts/commit.py` (V68 to V95). The external gate at `bf9f754` missed one stale negative test
+(V96 to V101); after its fix the owner's gate passed at `05763a9` (V102), and the owner accepted P0.
+P1 is authorized and starts from that commit.
 
 ## Standing obligation
 
