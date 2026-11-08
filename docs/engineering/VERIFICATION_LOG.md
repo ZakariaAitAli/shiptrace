@@ -386,3 +386,23 @@ Run in this session on `3f6277e` with CP2 uncommitted, against PostgreSQL 18.6 t
 | V111 | Migration review, `0002` only | No critical, high or medium finding. Low: credential-name tests had no forbidden character in the middle and no names with space, `.` or `_`; reproduced by reasoning, then fixed with four middle-character cases and four valid names checked against the domain rule. Low: ARCHITECTURE §3 listed the old broader runtime grants; corrected |
 | V112 | The reviewer's mutant, middle character class replaced by `.` | Killed: exactly the four new middle-character cases failed, 286 passed. The pattern was then restored |
 | V113 | Final `scripts/verify.sh` | Passed: 290 tests, 96.07% coverage, smoke passed |
+
+## P1 S1 CP3: bearer authentication, credential lookup and problem responses
+
+Run in this session on `49377be` with CP3 uncommitted. Docker-backed runs went through
+`scripts/verify.sh`, each approved by the owner. No production route is protected yet; tests attach
+probe routes.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V114 | New unit tests before the implementation | All three new files failed to import: `shiptrace.api.auth` and `shiptrace.application.access` did not exist |
+| V115 | Unit tests after the implementation | 223 passed. 16 of 16 mutants killed, covering header parsing, the format check before lookup, unknown credentials, skipped authorization, missing `WWW-Authenticate` and `Retry-After`, an outage reported as 401, echoed input or keys, an incomplete `Allow`, a 500 echoing its exception, the media type and the type URN |
+| V116 | First `scripts/verify.sh` | Passed: 359 tests, 97.41% coverage, new modules 100%, smoke passed |
+| V117 | Docker mutants of the lookup | Revocation ignored: 4 tests failed. SQL error chained to `StoreUnavailable`: 1 failed. Restored byte for byte |
+| V118 | Accepted, not tested | Inclusive expiry (`>=`) survived: a lookup in a later transaction cannot share the writer's `now()`, so the same-microsecond boundary is unobservable through the store |
+| V119 | Test review, CP3 only | Medium: database time is not proven against the application's clock, because both share a host; enforced by the query and review, not by a test, since freezing the clock needs a new dependency. Low: pool exhaustion untested; added. Low: fixed title, detail and exact members checked only for 401; now checked for every code, with the texts written in the test. A test that could not fail, the `Principal` repr check, was removed |
+| V120 | Security review, CP3 only | No leak of token, digest, header, SQL or request value. Low, reproduced: an invalid UTF-8 body made FastAPI raise HTTP 400, answered as 500 even for anonymous callers. A new test failed for both, then passed with 400 mapped to `validation_failed` |
+| V121 | Accepted | A body that is not JSON is answered with 422 before authentication, because FastAPI parses it before dependencies run. It names no value. Such requests will not count toward the failed-authentication limit (T10, P3). Server-side tracebacks on 500 are for P3 logging |
+| V122 | Docker mutant, `except OperationalError` instead of `SQLAlchemyError` | Killed by the new pool-exhaustion test alone, 360 passed. Restored byte for byte |
+| V123 | Final checks | 18 of 18 unit mutants killed, including detail passthrough and an added `instance` member. `scripts/verify.sh` passed: 361 tests, 97.43% coverage, smoke passed |
+| V124 | Database time, owner decision: option A | Accepted with its limit: the integration tests cannot tell database time from application time. Confirmed by reading: the only expiry rule is `expires_at > now()` in the lookup's SQL, which returns no timestamp. A static guard, `tests/unit/test_auth_clock.py`, fails if a module on the authentication path imports `datetime`, `time` or `calendar`, or if the lookup brings `expires_at` or `revoked_at` into Python. The test review's mutant, comparing `expires_at` with `datetime.now(UTC)` in Python, failed both assertions; the file was restored byte for byte. No dependency added |

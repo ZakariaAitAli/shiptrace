@@ -10,15 +10,24 @@ from fastapi.testclient import TestClient
 from shiptrace.api.app import build_api
 
 
+class NoCredentials:
+    """Health checks are public: any credential lookup fails the test."""
+
+    def find_active(self, secret_digest: bytes) -> None:
+        raise AssertionError("health checks must not look up credentials")
+
+
 def client(ready: bool = True, docs_enabled: bool = False) -> TestClient:
-    return TestClient(build_api(readiness=lambda: ready, docs_enabled=docs_enabled))
+    return TestClient(
+        build_api(readiness=lambda: ready, docs_enabled=docs_enabled, credentials=NoCredentials())
+    )
 
 
 def test_healthz_never_consults_readiness() -> None:
     def fail() -> bool:
         raise AssertionError("healthz must not depend on readiness")
 
-    app: FastAPI = build_api(readiness=fail, docs_enabled=False)
+    app: FastAPI = build_api(readiness=fail, docs_enabled=False, credentials=NoCredentials())
     response = TestClient(app).get("/healthz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -66,7 +75,7 @@ def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
         return False
 
     async def scenario() -> int:
-        app = build_api(readiness=stuck, docs_enabled=False)
+        app = build_api(readiness=stuck, docs_enabled=False, credentials=NoCredentials())
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="http://test") as client:
             waiting = [asyncio.create_task(client.get("/readyz")) for _ in range(60)]

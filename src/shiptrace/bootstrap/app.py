@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from shiptrace.api.app import build_api
 from shiptrace.application.readiness import CachedCheck, SchemaExpectation, is_ready
 from shiptrace.bootstrap.settings import Settings
+from shiptrace.persistence.credentials import PostgresCredentialStore
 from shiptrace.persistence.engine import build_engine
 from shiptrace.persistence.schema import PostgresSchemaProbe
 from shiptrace.persistence.schema import expected_schema as build_expected_schema
@@ -31,5 +32,6 @@ def create_app(
     return build_api(
         readiness=readiness,
         docs_enabled=settings.environment != "production",
+        credentials=PostgresCredentialStore(engine),
         lifespan=lifespan,
     )
