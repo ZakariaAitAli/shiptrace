@@ -359,3 +359,17 @@ reported them; Claude Code did not run or observe this execution.
 | V102 | `scripts/p0_gate.sh` at `05763a9` | **Passed**, exit 0. `scripts/verify.sh`: 97 tests, 95% coverage, 3 of 3 contracts. Smoke 3 of 3. Violations 33 of 33 detected, 0 missed. 54 of 54 commits GPG-verified. Supersedes V96 |
 
 P0 is accepted by the owner at `05763a9`. P1 starts from that commit.
+
+## P1 S1 CP1: credential tokens, scopes and name rules
+
+Run in this session on `02f2ad0` with CP1 uncommitted. Pure domain and application code; no
+database change.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V103 | New unit tests before any implementation | All three files failed to import: `shiptrace.domain.credentials`, `shiptrace.domain.names` and `shiptrace.application.credentials` did not exist |
+| V104 | Same tests after the implementation | 93 passed. Line and branch coverage of the new modules 100% |
+| V105 | Security review, CP1 only | One Low finding, reproduced: `is_allowed(Scope.ADMIN, "register")` returned True, because `StrEnum` members hash and compare as strings. A new test failed for `register` and `view_registry`, then passed after an `Action` type check. No other finding |
+| V106 | Test review, CP1 only | Three findings, each reproduced as a surviving mutant: slugs of length 2 rejected; name ends allowing `_` and names unable to start with a digit; base64 with `-` and `_` swapped. Fixed by adding `qa`, `1st deploy`, `_ci`, `ci_`, `.ci`, `ci-` and two alphabet vectors |
+| V107 | Mutants | 22 of 22 killed, including the four that had survived |
+| V108 | Accepted, not tested | A non-cryptographic generator such as `random.randbytes` passes the tests, but Ruff S311 rejects it in `scripts/verify.sh`; checked on a scratch file |
