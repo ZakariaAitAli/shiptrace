@@ -159,6 +159,16 @@ characters; `deployment_key` is `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`; `source_url`
 `https://`, has a host, carries no user information, whitespace or control characters, uses
 Punycode for international names, and is at most 2048 characters.
 
+### Registry bodies
+
+`POST /services` and `POST /environments` take `{"slug": "<slug>"}` and nothing else, and answer
+`201` with `{"id": "<uuid>", "slug": "<slug>", "created_at": "<RFC 3339>"}`; the database assigns
+`id` and `created_at`. The lists answer `200` with `{"items": [...], "next_cursor": "<opaque>"}`,
+ordered by slug in byte order; `next_cursor` is `null` on the last page. A cursor is `422` unless
+it is in the exact form the server issues and names a position in the list it is sent to, so a
+services cursor is refused by `/environments`. Cursors are not signed: a client that builds one
+can only start a list at a slug of its choosing, which reveals nothing more than the list itself.
+
 ### Errors
 
 Every error is `application/problem+json` with `type` `urn:shiptrace:problem:<code>`, `title`,
