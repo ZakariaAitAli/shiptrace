@@ -38,7 +38,7 @@
     "ask": [
       "Bash(scripts/verify.sh)",
       "Bash(scripts/smoke.sh)",
-      "Bash(git commit *)"
+      "Bash(scripts/commit.py *)"
     ]
   },
   "hooks": {
@@ -92,7 +92,7 @@
     "excludedCommands": [
       "scripts/verify.sh",
       "scripts/smoke.sh",
-      "git commit *"
+      "scripts/commit.py *"
     ],
     "filesystem": {
       "denyRead": [
@@ -118,7 +118,8 @@
         ".git/config",
         ".gitleaks.toml",
         "uv.toml",
-        ".python-version"
+        ".python-version",
+        ".git"
       ]
     },
     "network": {

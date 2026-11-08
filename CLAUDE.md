@@ -53,6 +53,9 @@ Format: `<type>(<scope>): <description>` per Conventional Commits 1.0.0. `script
 enforces this as a `commit-msg` hook, and
 `scripts/pre_commit.py` checks staged content. Install both once with `scripts/install_git_hooks.sh`.
 
+Claude Code commits only with `scripts/commit.py "<message>" <path>...`, from the root, approved
+each run. `.git` is read-only in the sandbox, so do not stage there; the script stages the paths.
+
 - Types: `feat fix refactor test docs chore ci build perf security`. Lowercase type and scope.
 - Imperative, concise description, under 72 characters. One logical change per commit.
 - No generic messages such as `updates`, `fixes` or `WIP`.

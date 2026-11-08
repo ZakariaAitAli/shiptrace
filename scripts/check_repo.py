@@ -33,15 +33,17 @@ REQUIRED_DENY_WRITE = {
     ".gitleaks.toml",
     "uv.toml",
     ".python-version",
+    ".git",
 }
 ALLOWED_DOMAINS = {"pypi.org", "files.pythonhosted.org"}
-ALLOWED_EXCLUSIONS = {"scripts/verify.sh", "scripts/smoke.sh", "git commit *"}
+ALLOWED_EXCLUSIONS = {"scripts/verify.sh", "scripts/smoke.sh", "scripts/commit.py *"}
 REQUIRED_GATES = (
     "scripts/check_repo.py",
     "scripts/check_history.py",
     "scripts/test_commit_msg.py",
     "scripts/test_check_history.py",
     "scripts/test_pre_commit.py",
+    "scripts/test_commit.py",
     ".claude/hooks/tests/test_hooks.py",
     "uv lock --check",
     "ruff format --check --config pyproject.toml",
