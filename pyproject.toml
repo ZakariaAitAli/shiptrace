@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 shiptrace-migrate = "shiptrace.bootstrap.migrate:main"
+shiptrace = "shiptrace.bootstrap.cli:main"
 
 [dependency-groups]
 dev = [
