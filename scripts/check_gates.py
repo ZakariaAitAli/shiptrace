@@ -260,7 +260,7 @@ VIOLATIONS = (
     ),
     Violation(
         "exclusion auto-allowed",
-        settings_change(lambda s: s["permissions"]["allow"].append("Bash(git commit *)")),
+        settings_change(lambda s: s["permissions"]["allow"].append("Bash(scripts/commit.py *)")),
         CHECK_REPO,
         "must not be auto-allowed",
     ),

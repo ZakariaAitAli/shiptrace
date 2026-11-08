@@ -22,6 +22,7 @@ python3 -I scripts/test_commit_msg.py
 python3 -I scripts/test_check_history.py
 python3 -I scripts/test_pre_commit.py
 python3 -I scripts/test_commit.py
+python3 -I scripts/test_check_gates.py
 
 echo "==> hook tests"
 python3 -I .claude/hooks/tests/test_hooks.py

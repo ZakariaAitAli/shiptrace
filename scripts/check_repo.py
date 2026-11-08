@@ -44,6 +44,7 @@ REQUIRED_GATES = (
     "scripts/test_check_history.py",
     "scripts/test_pre_commit.py",
     "scripts/test_commit.py",
+    "scripts/test_check_gates.py",
     ".claude/hooks/tests/test_hooks.py",
     "uv lock --check",
     "ruff format --check --config pyproject.toml",

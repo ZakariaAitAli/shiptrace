@@ -334,3 +334,17 @@ The guards protect `.claude/hooks/`, so the fix was made in a scratch copy and i
 | V93 | Gates | Hooks 30 of 30. `scripts/verify.sh --fast` exit 0: commit messages 3, history 7, pre-commit 23, commit script 11, hooks 30, Ruff, formatting and mypy clean, 3 of 3 contracts, 76 unit tests. `git diff --check` clean |
 | V94 | Protections live | 11 of 11 guard payloads for this project as expected, including the commit script refused from `src/`, with `nohup`, a substitution, a redirection or `cd`, and allowed plainly at the root. No process call in `guard_files.py`; no import-linter in the pre-commit hook. `.git` write refused, `git add` refused, `git status` works. Commands naming `pre_commit.py` and `test_pre_commit.py` now run |
 | V95 | Commit path readiness | Script executable, `/usr/bin/python3` 3.14.4, `commit-msg` and `pre-commit` hooks installed. The signing key's state cannot be seen from the sandbox |
+
+## External P0 gate at `bf9f754`, and the stale negative test
+
+V96 is as the owner reported it; Claude Code did not observe that run. V97 to V101 ran in this
+session, in a scratch clone of `bf9f754`; `scripts/` is protected, so the fix is an owner patch.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V96 | Owner's `scripts/p0_gate.sh` at `bf9f754` | **Failed.** `scripts/verify.sh` 97 tests, 95% coverage; smoke 3 of 3; contracts 3 of 3; 53 of 53 signatures good; violations 32 of 33, `MISSED exit=0 exclusion auto-allowed` |
+| V97 | Root cause | The violation still adds `Bash(git commit *)` to `allow`. Since `22f44ed` that is no longer a sandbox exclusion, so `check_repo.py`, which flags an `allow` rule equal to an exclusion, rightly passes it. The V67 patch changed the exclusion without updating the violation; V81 used its own settings mutations, not `check_gates.py`. Reproduced alone as the gate runs it: `MISSED exit=0`, `repository checks: OK` |
+| V98 | New `scripts/test_check_gates.py` against `bf9f754` | 2 failures, both the stale violation: not caught, and its added rule `Bash(git commit *)` is not a current exclusion. The baseline and every other `check_repo.py` violation passed |
+| V99 | After the fix, which now adds `Bash(scripts/commit.py *)` | 3 of 3 |
+| V100 | Mutants | 3 of 3 killed: the auto-allow rule removed from `check_repo.py`; an unrelated error that contains the expected marker, caught by the baseline test; the fix reverted |
+| V101 | Gate steps in the clone | Repository and history checks OK; commit messages 3, history 7, pre-commit 23, commit script 11, gate violations 3, hooks 30; lockfile current; 61 files formatted; Ruff and mypy clean; 3 of 3 contracts; 76 unit tests. `check_gates.py` needs Docker, so the owner runs it |
