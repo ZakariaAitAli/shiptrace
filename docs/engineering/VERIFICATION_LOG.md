@@ -263,3 +263,74 @@ and `.git/config` is protected. Three new blockers were confirmed by contained e
 | V67 | Time-of-check gap: a background sandboxed process can plant `.git/commondir` during an approval prompt | Reasoned, not executed | Open, for the owner. Only moving `git commit` out of the agent's hands closes it |
 
 V61 to V63 describe `1822839`, and do not cover these fixes.
+
+## Remediation of V64 to V67, prepared in a disposable clone
+
+Run by Claude Code in a scratch clone of `6f79ff4`, never in the live repository. The guards refuse
+writes to any `.claude/hooks/` path, so the proposed hooks were edited in a copy outside `.claude`
+and are delivered as an owner patch. Nothing here describes the applied state.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V68 | State of `6f79ff4` | V64 to V66 unfixed in code. In the sandbox, opening `.git/HEAD` for write succeeds although mount info lists `.git` read-only; `.git/hooks` returns `EROFS`. So `.git/commondir` can be planted |
+| V69 | Reproductions before any fix | A planted `commondir` ran its fsmonitor on `git status`. `check_location()` allowed 7 of 7 wrapped forms from `src/`. An untracked root `typing_extensions.py` ran during `pre_commit.py`, because import-linter puts its directory first on `sys.path` |
+| V70 | New tests against the unchanged code | Hook tests: 58 failing tests and subtests, covering V64, every wrapped, rewritten and redirected form, substitutions, a missing `cwd` and `commondir`. Pre-commit: the planted-module test failed. Plain forms passed throughout |
+| V71 | Same tests after the fixes | Hook tests 28 of 28, pre-commit 23 of 23 |
+| V72 | Mutants of the new location check | 10 of 10 killed |
+| V73 | `scripts/verify.sh --fast` in the clone, with the original hooks in place | Exit 0: 76 unit tests, mypy clean on 28 files, 3 of 3 contracts, pre-commit 23, hooks 22. Docker gates did not run |
+| V74 | V67 protections, emulated in throwaway repositories | An empty or `/dev/null` `commondir`, which is what a `denyWrite` placeholder would be, makes every git command fail, so that protection is rejected. Pinning `GIT_COMMON_DIR` to the real `.git` stopped the planted fsmonitor. A read-only `.git` kept status, diff and ls-files working, and refused add and stash. The real harness was not tested: `bwrap` cannot nest here |
+
+Correction to V67: a planted `commondir` affects any git command run outside the sandbox, including
+the owner's own, so moving commits to the owner does not close it alone. V71 to V74 are the agent's
+own runs. The owner patch, a live sandbox test and the external gate remain.
+
+## V67 design: read-only `.git` and a single commit script, prepared in the same clone
+
+| ID | Check | Outcome |
+|---|---|---|
+| V75 | Real harness, by observation in the live session | A `.git` read-only mount exists, but under the root mount, and the project's writable bind is mounted over it, so it has no effect. Directories in `denyWrite`, such as `scripts` and `.venv`, are mounted under the project bind and refuse writes. This suggests a `.git` entry would hold; it is not a test of one |
+| V76 | Real harness, direct test | **Not run by the agent.** Nested `bwrap` is refused inside the sandbox, and the CLI has no command that runs one command in its sandbox. A probe for the owner exists; its dry run in a writable clone reported every metadata write as a failure, so it can fail |
+| V77 | New guard tests for `scripts/commit.py` and redirections, against the V64 to V66 guard | 13 failures, including `scripts/verify.sh >> ~/.bashrc`: a redirection runs in the shell outside the sandbox |
+| V78 | `scripts/test_commit.py` before `scripts/commit.py` existed | 11 errors |
+| V79 | All tests after the change | Hooks 28, commit 11, pre-commit 23, commit messages 3, history 7, history checks OK, Ruff and formatting clean, mypy clean on 28 files, 3 of 3 contracts, 76 unit tests. `check_repo.py` accepts the candidate settings and rejects the current ones |
+| V80 | Mutants | Guard: 12 of 12 killed. `commit.py`: 9 of 10. The survivor is the repository pin behind the `commondir` refusal; with the refusal removed, a planted hook did not run with the pin and did run without it |
+| V81 | `check_repo.py` against weakened candidate settings | Each refused: no `.git` in `denyWrite`, `git commit` excluded again, `commit.py` auto-allowed, its `ask` rule removed |
+
+`scripts/verify.sh --fast` as a single run with the candidate settings and new hooks in place needs
+the owner's patch; its steps ran separately in V79.
+
+## V64 to V67 patch applied to the live working tree, uncommitted
+
+V82 is as the owner reported it; Claude Code did not observe that run. V83 to V88 ran in this
+session, on `6f79ff4` with the patch applied by the owner.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V82 | Owner's disposable-clone probe in the real sandbox | Claude Code 2.1.318, git 2.53.0: 30 checks passed, 0 failed; `.git` writes refused, git reads working, fast verification passed |
+| V83 | Working tree against patch `c1e7b238…` | Reverse apply succeeds, so every hunk and both new files match. 13 modified and 2 new files; modified files are byte-identical to the reviewed copies |
+| V84 | Active sandbox | `.git` mounted read-only under the project mount. Write-open of `.git/HEAD`, `index`, `description`, `touch` and `mkdir` refused. git add, update-ref, branch and `config --local` refused, no ref created. status, diff, log, rev-parse, show, branch list, blame and ls-files return 0 |
+| V85 | Hook tests, run directly | 28 of 28 |
+| V86 | `scripts/verify.sh --fast` | Exit 0: repository and history checks OK; commit messages 3, history 7, pre-commit 23, commit script 11, hooks 28; Ruff, formatting and mypy clean; 3 of 3 contracts; 76 unit tests |
+| V87 | Live location check | Shell in `src/`: a harmless trigger was refused as outside the root. Shell at the root: allowed, and `--show-prefix` printed nothing, so it ran there. The guard's view matched the real directory in each pair; a `cd` applied one call late |
+| V88 | Defect found | `EXCLUDED_SCRIPT` is unanchored, so `pre_commit.py`, `test_commit.py` and `test_pre_commit.py` count as excluded scripts, and commands naming them are refused unless plain. Fails closed; no security effect. Fix before committing |
+
+The signed path through `scripts/commit.py` has not run live; the first approved commit tests it.
+
+## V88 fix: anchor the excluded-script names, prepared outside `.claude`
+
+The guards protect `.claude/hooks/`, so the fix was made in a scratch copy and is an owner patch.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V89 | New tests against the current guard | 16 failures: 8 harmless mentions of `pre_commit.py`, `test_commit.py` and `test_pre_commit.py`, each from a nested directory and the root. The new test that excluded scripts stay protected by any path already passed |
+| V90 | New tests against the corrected guard | 30 of 30. The unchanged previous test file also passes against it, 28 of 28 |
+| V91 | Mutants of the corrected guard | 16 of 16 killed: 5 on the new pattern, including reverting it, and the 11 earlier mutants, each with at least as many failures as in V80 |
+
+## Final pre-commit validation, live working tree on `6f79ff4`
+
+| ID | Check | Outcome |
+|---|---|---|
+| V92 | Contents | V88 patch reverse-applies; three hook files byte-identical to the corrected copies; the other 12 files match the approved V64 to V67 patch; this log only gains lines. 13 modified and 2 new files, nothing else |
+| V93 | Gates | Hooks 30 of 30. `scripts/verify.sh --fast` exit 0: commit messages 3, history 7, pre-commit 23, commit script 11, hooks 30, Ruff, formatting and mypy clean, 3 of 3 contracts, 76 unit tests. `git diff --check` clean |
+| V94 | Protections live | 11 of 11 guard payloads for this project as expected, including the commit script refused from `src/`, with `nohup`, a substitution, a redirection or `cd`, and allowed plainly at the root. No process call in `guard_files.py`; no import-linter in the pre-commit hook. `.git` write refused, `git add` refused, `git status` works. Commands naming `pre_commit.py` and `test_pre_commit.py` now run |
+| V95 | Commit path readiness | Script executable, `/usr/bin/python3` 3.14.4, `commit-msg` and `pre-commit` hooks installed. The signing key's state cannot be seen from the sandbox |

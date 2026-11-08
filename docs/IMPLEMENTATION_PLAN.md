@@ -38,8 +38,9 @@ the verification log, entries V29 to V50.
 
 Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
 the owner's external gate at `b7ceec8`. The external gate passed at `1822839`, but the focused security review at `c8b5769` failed on three
-confirmed blockers. **Open:** the owner decides how commits are made, applies the deletion patch,
-and repeats the external gate and a focused review.
+confirmed blockers. Fixes for V64 to V67 are prepared and tested in a clone (V68 to V81): `.git`
+read-only to the sandbox, and commits only through `scripts/commit.py`. **Open:** the owner's
+real-sandbox probe, applying the patch, a focused review, and the external gate.
 P1 waits for an independent P0 PASS and the owner's authorization.
 
 ## Standing obligation

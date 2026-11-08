@@ -36,12 +36,12 @@ through guard patch v3, applied by the owner in `a0ee681`.
 | Tier | Commands | Runs | Approval |
 |---|---|---|---|
 | Sandboxed | Everything, including `scripts/verify.sh --fast` | Inside the sandbox | None |
-| Excluded | `scripts/verify.sh`, `scripts/smoke.sh`, `git commit` | Outside the sandbox | Each run |
+| Excluded | `scripts/verify.sh`, `scripts/smoke.sh`, `scripts/commit.py` | Outside the sandbox | Each run |
 
 - Docker cannot run in the sandbox, and signing fails there, so these exclusions are needed.
 - Every exclusion must be an `ask` rule and must not be an `allow` rule; `check_repo.py` enforces it.
 - The sandbox refuses to start when unavailable, and forbids unsandboxed retries.
-- `scripts/`, Compose files, `pyproject.toml`, `uv.lock`, `.venv`, `.git/config` and `.gitleaks.toml`
+- `scripts/`, Compose files, `pyproject.toml`, `uv.lock`, `.venv`, `.git` and `.gitleaks.toml`
   are read-only to sandboxed commands, and hooks block the edit tools on them. `UV_NO_SYNC` stops
   `uv run` rebuilding `.venv`, while the smoke test's explicit `uv sync` installs only from the
   protected lockfile. Dependency changes become owner actions.
@@ -55,6 +55,20 @@ read `E` there, because `~/.gnupg` is hidden, so a good signature can only be co
 **Hooks are a third tier.** Command hooks run outside the sandbox with full access and no approval,
 so a hook must never run anything the sandbox can write, and must never trust the working directory
 in its payload. The final review found both broken; the owner patch `p0-final-fixes` addresses this.
+The focused review then found git started by `guard_files.py`, and git reads `.git`, which sandboxed
+code can write; that hook now starts no program. For the same reason the pre-commit hook no longer
+runs import-linter, which imports from its working directory. Excluded commands must be plain: run
+from the root, with no wrappers, assignments, shells, substitutions, redirections, pipes or
+directory changes.
+
+**Commits.** Every git command outside the sandbox reads `.git`, so sandboxed code must not write it:
+a planted `.git/commondir` redirects config and hooks (V67). `.git` is therefore read-only to
+sandboxed commands, and `git commit` is no longer excluded. Claude Code commits only through
+`scripts/commit.py`, which is protected, approved per run, pins git to this repository, rebuilds the
+environment from an allowlist, passes the message as data and paths after `--`, keeps the hooks,
+refuses unrelated staged changes, and requires signing, reporting any signature that is not good.
+*Rejected:* denying only `.git/commondir`, because the sandbox places an empty placeholder there and
+git then fails on every command; and pinning alone, which leaves the owner's own git exposed.
 
 **What remains.** Approval is the only control over the full run. `scripts/verify.sh` runs `src/`
 and `tests/`, which the agent can edit, with full access, so approving it means trusting that code.
