@@ -8,6 +8,17 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from shiptrace.api.app import build_api
+from shiptrace.application.registry import Kind, RegistryEntry
+
+
+class NoRegistry:
+    """Health checks never touch the registry: any call fails the test."""
+
+    def add(self, kind: Kind, slug: str) -> RegistryEntry | None:
+        raise AssertionError("health checks must not use the registry")
+
+    def list_after(self, kind: Kind, after: str | None, limit: int) -> list[RegistryEntry]:
+        raise AssertionError("health checks must not use the registry")
 
 
 class NoCredentials:
@@ -19,7 +30,12 @@ class NoCredentials:
 
 def client(ready: bool = True, docs_enabled: bool = False) -> TestClient:
     return TestClient(
-        build_api(readiness=lambda: ready, docs_enabled=docs_enabled, credentials=NoCredentials())
+        build_api(
+            readiness=lambda: ready,
+            docs_enabled=docs_enabled,
+            credentials=NoCredentials(),
+            registry=NoRegistry(),
+        )
     )
 
 
@@ -27,7 +43,9 @@ def test_healthz_never_consults_readiness() -> None:
     def fail() -> bool:
         raise AssertionError("healthz must not depend on readiness")
 
-    app: FastAPI = build_api(readiness=fail, docs_enabled=False, credentials=NoCredentials())
+    app: FastAPI = build_api(
+        readiness=fail, docs_enabled=False, credentials=NoCredentials(), registry=NoRegistry()
+    )
     response = TestClient(app).get("/healthz")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
@@ -75,7 +93,9 @@ def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
         return False
 
     async def scenario() -> int:
-        app = build_api(readiness=stuck, docs_enabled=False, credentials=NoCredentials())
+        app = build_api(
+            readiness=stuck, docs_enabled=False, credentials=NoCredentials(), registry=NoRegistry()
+        )
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="http://test") as client:
             waiting = [asyncio.create_task(client.get("/readyz")) for _ in range(60)]

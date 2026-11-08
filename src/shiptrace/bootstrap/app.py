@@ -10,6 +10,7 @@ from shiptrace.application.readiness import CachedCheck, SchemaExpectation, is_r
 from shiptrace.bootstrap.settings import Settings
 from shiptrace.persistence.credentials import PostgresCredentialStore
 from shiptrace.persistence.engine import build_engine
+from shiptrace.persistence.registry import PostgresRegistry
 from shiptrace.persistence.schema import PostgresSchemaProbe
 from shiptrace.persistence.schema import expected_schema as build_expected_schema
 
@@ -33,5 +34,6 @@ def create_app(
         readiness=readiness,
         docs_enabled=settings.environment != "production",
         credentials=PostgresCredentialStore(engine),
+        registry=PostgresRegistry(engine),
         lifespan=lifespan,
     )

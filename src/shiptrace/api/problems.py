@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from starlette.routing import Match
 
 from shiptrace.application.access import Forbidden, StoreUnavailable, Unauthenticated
+from shiptrace.application.registry import AlreadyExists, InvalidPage, InvalidSlug
 
 MEDIA_TYPE = "application/problem+json"
 RETRY_AFTER_SECONDS = "1"
@@ -63,15 +64,19 @@ def validation_errors(error: RequestValidationError) -> list[dict[str, str]]:
     return found
 
 
+_METHODS = ("DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT")
+
+
 def allowed_methods(request: Request) -> str:
     """Every method the path supports. Starlette's own 405 names only the first matching route,
-    which is wrong when one path has a route per method."""
-    methods: set[str] = set()
-    for route in request.app.router.routes:
-        match, _ = route.matches(request.scope)
-        if match is Match.PARTIAL:
-            methods |= getattr(route, "methods", None) or set()
-    return ", ".join(sorted(methods))
+    which is wrong when one path has a route per method. Each method is tried against the route
+    table through matches(), which also resolves routers FastAPI includes lazily."""
+    allowed = []
+    for method in _METHODS:
+        scope = {**request.scope, "method": method}
+        if any(route.matches(scope)[0] is Match.FULL for route in request.app.router.routes):
+            allowed.append(method)
+    return ", ".join(allowed)
 
 
 def install_problem_handlers(app: FastAPI) -> None:
@@ -103,6 +108,21 @@ def install_problem_handlers(app: FastAPI) -> None:
     async def unexpected(_: Request, __: Exception) -> JSONResponse:
         return problem("internal_error")
 
+    async def already_exists(_: Request, __: Exception) -> JSONResponse:
+        return problem("already_exists")
+
+    # The API validates first; these answer if a use case ever sees input the API let through.
+    async def invalid_slug(_: Request, __: Exception) -> JSONResponse:
+        return problem(
+            "validation_failed", errors=[{"location": "body.slug", "rule": "slug_format"}]
+        )
+
+    async def invalid_page(_: Request, __: Exception) -> JSONResponse:
+        return problem("validation_failed", errors=[{"location": "query", "rule": "invalid_page"}])
+
+    app.add_exception_handler(AlreadyExists, already_exists)
+    app.add_exception_handler(InvalidSlug, invalid_slug)
+    app.add_exception_handler(InvalidPage, invalid_page)
     app.add_exception_handler(Unauthenticated, unauthenticated)
     app.add_exception_handler(Forbidden, forbidden)
     app.add_exception_handler(StoreUnavailable, unavailable)

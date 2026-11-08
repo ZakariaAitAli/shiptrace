@@ -18,6 +18,8 @@ from shiptrace.application.access import Principal, StoreUnavailable
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Action, Scope, digest
 
+from .fakes import DictRegistry
+
 PROBLEM_KEYS = {"type", "title", "status", "detail", "code"}
 # Written out here, not read from the code, so a changed or request-derived text fails a test.
 FIXED_TEXT = {
@@ -54,7 +56,9 @@ def principal(scope: Scope) -> Principal:
 
 
 def probe_app(store: DictStore) -> FastAPI:
-    app = build_api(readiness=lambda: True, docs_enabled=False, credentials=store)
+    app = build_api(
+        readiness=lambda: True, docs_enabled=False, credentials=store, registry=DictRegistry()
+    )
 
     def view() -> dict[str, str]:
         return {"status": "ok"}

@@ -43,8 +43,9 @@ bootstrap wires everything, including logging and telemetry setup
 | `api` | Routers, Pydantic schemas, auth dependency, middleware, dashboard, error mapping | `persistence` |
 | `bootstrap` | Settings, app factory, lifespan, CLI | Is imported only by entry points |
 
-Enforced by `import-linter` contracts in `scripts/verify.sh` and the pre-commit hook, and in CI
-from P5, so a violation fails the build. Ports exist only
+Enforced by `import-linter` contracts in `scripts/verify.sh`, and in CI from P5, so a violation
+fails the build. The pre-commit hook does not run them: import-linter imports modules from its
+working directory, and a commit runs outside the sandbox (V66). Ports exist only
 where they pay for themselves: fast unit tests of use cases without a database.
 
 ## 3. Data model
