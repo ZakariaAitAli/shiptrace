@@ -142,6 +142,43 @@ Event body (all fields are length- and pattern-validated; unknown fields rejecte
 `source_url` must be `https`. `reason` is optional free text up to 500 characters; it is
 rendered escaped and never logged.
 
+### Input formats
+
+Approved by the owner on 2026-11-08. Values are ASCII, matched exactly and never normalized: an
+uppercase slug is rejected, not lowercased.
+
+| Field | Rule |
+|---|---|
+| Service and environment slug | 1–63 characters of `a-z`, `0-9` and `-`; starts and ends with a letter or digit; no `--` |
+| Credential name | 1–64 characters of `A-Z`, `a-z`, `0-9`, space, `.`, `_` and `-`; starts and ends with a letter or digit; not unique |
+| Page size `limit` | 1–100, default 50; the cursor is opaque |
+
+Provisional, finalized in the ingestion slice: `version` is
+`[A-Za-z0-9][A-Za-z0-9._+-]{0,127}`; `commit_sha` is exactly 40 or 64 lowercase hexadecimal
+characters; `deployment_key` is `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`; `source_url` starts with
+`https://`, has a host, carries no user information, whitespace or control characters, uses
+Punycode for international names, and is at most 2048 characters.
+
+### Errors
+
+Every error is `application/problem+json` with `type` `urn:shiptrace:problem:<code>`, `title`,
+`status`, `detail` and `code`. `title` and `detail` are fixed per code. No response contains a
+credential, a request value, an internal exception or a stack trace. Mandatory headers stay, such
+as `WWW-Authenticate` on `401` and `Retry-After` on `503`.
+
+| Code | Status | When |
+|---|---|---|
+| `unauthenticated` | 401 | Credential missing, malformed, unknown, revoked or expired |
+| `forbidden` | 403 | Valid credential without the required scope |
+| `not_found` | 404 | Unknown route or resource |
+| `method_not_allowed` | 405 | Known route, other method |
+| `already_exists` | 409 | A service or environment with that slug is already registered |
+| `validation_failed` | 422 | Body, query or cursor invalid; adds `errors` with location and rule, never values |
+| `internal_error` | 500 | Unexpected failure |
+| `unavailable` | 503 | Database unreachable or pool exhausted |
+
+Ingestion adds the codes of §3.
+
 ## 6. Non-functional limits (defaults, all configurable)
 
 | Limit | Value |
