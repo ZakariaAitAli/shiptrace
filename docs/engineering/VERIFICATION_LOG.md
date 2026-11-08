@@ -373,3 +373,16 @@ database change.
 | V106 | Test review, CP1 only | Three findings, each reproduced as a surviving mutant: slugs of length 2 rejected; name ends allowing `_` and names unable to start with a digit; base64 with `-` and `_` swapped. Fixed by adding `qa`, `1st deploy`, `_ci`, `ci_`, `.ci`, `ci-` and two alphabet vectors |
 | V107 | Mutants | 22 of 22 killed, including the four that had survived |
 | V108 | Accepted, not tested | A non-cryptographic generator such as `random.randbytes` passes the tests, but Ruff S311 rejects it in `scripts/verify.sh`; checked on a scratch file |
+
+## P1 S1 CP2: migration 0002 and least-privilege grants
+
+Run in this session on `3f6277e` with CP2 uncommitted, against PostgreSQL 18.6 through
+`scripts/verify.sh`, each run approved by the owner.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V109 | New integration tests before the migration existed | About 92 new tests failed, with `42P01` (undefined table) or no row; existing tests passed. SQLSTATE checks kept a missing table from passing as a privilege refusal |
+| V110 | Same tests with migration `0002` | `scripts/verify.sh` passed: 282 tests, 96.07% coverage, smoke passed |
+| V111 | Migration review, `0002` only | No critical, high or medium finding. Low: credential-name tests had no forbidden character in the middle and no names with space, `.` or `_`; reproduced by reasoning, then fixed with four middle-character cases and four valid names checked against the domain rule. Low: ARCHITECTURE §3 listed the old broader runtime grants; corrected |
+| V112 | The reviewer's mutant, middle character class replaced by `.` | Killed: exactly the four new middle-character cases failed, 286 passed. The pattern was then restored |
+| V113 | Final `scripts/verify.sh` | Passed: 290 tests, 96.07% coverage, smoke passed |

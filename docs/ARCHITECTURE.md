@@ -93,8 +93,8 @@ A report committed late may be missed while paging; a reload shows it.
 | Table | `shiptrace_app` may |
 |---|---|
 | `deployments`, `deployment_events` | `SELECT, INSERT` |
-| `services`, `environments` | `SELECT, INSERT` |
-| `api_credentials` | `SELECT, INSERT`; `UPDATE (last_used_at, revoked_at)` only |
+| `services`, `environments` | `SELECT`, and `INSERT (slug)` only, so ids and timestamps come from the database (migration `0002`) |
+| `api_credentials` | `SELECT` only. Admin credentials come from the bootstrap CLI under the migrator role; runtime writes are decided before S2 (ADR-0005) |
 | `dashboard_users` | `SELECT` only: accounts are managed by the CLI under the migrator role |
 | `dashboard_sessions` | `SELECT, INSERT`; `UPDATE (last_seen_at, revoked_at)` only |
 | `alembic_version` | `SELECT` |
