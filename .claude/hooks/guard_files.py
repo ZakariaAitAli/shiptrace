@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""PreToolUse guard for file edits: protected paths, applied migrations, and secret content."""
+"""PreToolUse guard for file edits: protected paths and secret content.
+
+This hook runs outside the sandbox, so it starts no program: git would read `.git`, which sandboxed
+code can write. Applied migrations are enforced where they land, by `scripts/pre_commit.py`.
+"""
 
 import json
 import os
 import re
-import subprocess
 import sys
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
@@ -38,18 +41,6 @@ SECRET_PATTERNS = {
 }
 
 
-def is_tracked_migration(path: Path, cwd: str) -> bool:
-    if "migrations/versions" not in path.as_posix() or path.suffix != ".py":
-        return False
-    result = subprocess.run(
-        ["git", "ls-files", "--error-unmatch", str(path)],
-        cwd=cwd,
-        capture_output=True,
-        check=False,
-    )
-    return result.returncode == 0
-
-
 def path_problem(raw_path: str, cwd: str) -> str | None:
     if not raw_path:
         return None
@@ -68,8 +59,6 @@ def path_problem(raw_path: str, cwd: str) -> str | None:
         return f"{name}: agent guardrails change only with the owner, who edits them directly"
     if path.is_relative_to(root) and TRUSTED_EXECUTED.search(path.relative_to(root).as_posix()):
         return f"{name}: runs outside the sandbox, so it changes only with the owner"
-    if is_tracked_migration(path, str(root)):
-        return f"{name}: applied migrations are immutable, add a new one"
     return None
 
 

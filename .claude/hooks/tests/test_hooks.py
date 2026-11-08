@@ -31,6 +31,22 @@ def bash_exit(hook: str, command: str) -> int:
     return run_hook(hook, {"tool_name": "Bash", "tool_input": {"command": command}}).returncode
 
 
+def plant_commondir(project: Path) -> Path:
+    """Points .git/commondir at a repository whose fsmonitor touches a marker.
+
+    Sandboxed code can write .git/commondir, so this is what an attacker can arrange.
+    """
+    evil = project.parent / f"{project.name}-common"
+    subprocess.run(["git", "init", "-q", "--bare", str(evil)], check=True)
+    marker = project.parent / f"{project.name}-ran"
+    # Written directly: this is the attacker's file, not a change to any real configuration.
+    Path(evil, "config").write_text(
+        f"[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tfsmonitor = touch {marker}\n"
+    )
+    Path(project, ".git/commondir").write_text(f"{evil}\n")
+    return marker
+
+
 class GuardBash(unittest.TestCase):
     DENIED = [
         "git push",
@@ -399,16 +415,32 @@ class GuardFiles(unittest.TestCase):
         }
         self.assertEqual(run_hook("guard_files.py", payload).returncode, 2)
 
-    def test_tracked_migration_is_immutable_but_new_one_is_not(self) -> None:
-        with tempfile.TemporaryDirectory() as repo:
-            versions = Path(repo, "migrations/versions")
+    def test_planted_commondir_never_runs(self) -> None:
+        """V64: the hook runs outside the sandbox, so it must never start git on that state."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory, "project")
+            versions = root / "migrations/versions"
             versions.mkdir(parents=True)
-            tracked = versions / "0001_first.py"
-            tracked.write_text("x")
-            subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-            subprocess.run(["git", "add", "."], cwd=repo, check=True)
-            self.assertEqual(self.exit_code(str(tracked), cwd=repo), 2)
-            self.assertEqual(self.exit_code(str(versions / "0002_new.py"), cwd=repo), 0)
+            (versions / "0001_first.py").write_text("x")
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            marker = plant_commondir(root)
+            tool_input = {"file_path": "migrations/versions/0001_first.py", "content": "x"}
+            run_hook("guard_files.py", {"cwd": str(root), "tool_input": tool_input}, str(root))
+            self.assertFalse(marker.exists())
+
+    def test_starts_no_program(self) -> None:
+        """With no PATH, a hook that needs a program fails closed; this one needs none."""
+        tool_input = {"file_path": "migrations/versions/0001_first.py", "content": "x"}
+        result = subprocess.run(
+            [sys.executable, "-I", str(HOOKS / "guard_files.py")],
+            input=json.dumps({"cwd": ".", "tool_input": tool_input}),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+            env={"PATH": ""},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class Location(unittest.TestCase):
@@ -427,7 +459,13 @@ class Location(unittest.TestCase):
         return run_hook("guard_bash.py", payload, self.project).returncode
 
     def test_excluded_commands_are_refused_elsewhere(self) -> None:
-        for command in ("git commit -m x", "scripts/verify.sh", "scripts/smoke.sh", "./scripts/verify.sh"):
+        for command in (
+            "git commit -m x",
+            "scripts/verify.sh",
+            "scripts/smoke.sh",
+            "./scripts/verify.sh",
+            "scripts/commit.py 'fix(x): y' a.py",
+        ):
             with self.subTest(command=command):
                 self.assertEqual(self.exit_code(command, str(self.nested)), 2)
 
@@ -441,7 +479,137 @@ class Location(unittest.TestCase):
 
     def test_redirected_repository_cannot_commit(self) -> None:
         Path(self.project, ".git/commondir").write_text("/tmp/elsewhere\n")
-        self.assertEqual(self.exit_code("git commit -m x", self.project), 2)
+        for command in ("git commit -m x", "nohup git commit -m x", "scripts/verify.sh"):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, self.project), 2)
+
+    # V65: Claude Code strips wrappers and assignments before matching exclusions, and may unquote.
+    DISGUISED = (
+        "nohup git commit -m x",
+        "timeout 5 git commit -m x",
+        "time git commit -m x",
+        "nice -n 5 git commit -m x",
+        "stdbuf -o0 git commit -m x",
+        "env git commit -m x",
+        "env -i git commit -m x",
+        "NO_COLOR=1 git commit -m x",
+        "A=1 B=2 git commit -m x",
+        "command git commit -m x",
+        "exec git commit -m x",
+        "bash -c 'git commit -m x'",
+        "nohup scripts/verify.sh",
+        "timeout 900 ./scripts/verify.sh",
+        "FOO=1 scripts/smoke.sh",
+        "bash scripts/smoke.sh",
+        "nohup scripts/commit.py 'fix(x): y' a.py",
+        "A=1 scripts/commit.py 'fix(x): y' a.py",
+        "python3 scripts/commit.py 'fix(x): y' a.py",
+    )
+    # Harmless at the root, where they are plain git; only the location makes them dangerous.
+    REWRITTEN = (
+        'git "commit" -m x',
+        "git 'com'mit -m x",
+        "git comm\\it -m x",
+        "git $'\\x63ommit' -m x",
+        "(git commit -m x)",
+        "git status && git commit -m x",
+    )
+
+    def test_disguised_excluded_commands_are_refused_elsewhere(self) -> None:
+        for command in (*self.DISGUISED, *self.REWRITTEN):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, str(self.nested)), 2)
+
+    def test_excluded_commands_at_the_root_must_be_plain(self) -> None:
+        """At the root, anything that could change what runs is refused, not interpreted."""
+        refused = (
+            *self.DISGUISED,
+            "cd tests/x && git commit -m x",
+            "pushd tests/x; scripts/verify.sh",
+            "git -C tests/x commit -m x",
+            "git --git-dir=tests/x/.git commit -m x",
+            "git --work-tree=tests/x commit -m x",
+            "GIT_DIR=tests/x/.git git commit -m x",
+            "export GIT_DIR=tests/x/.git; git commit -m x",
+            "tests/x/git commit -m x",
+            "./git commit -m x",
+            "tests/x/scripts/verify.sh",
+            "sh -c 'cd tests/x; scripts/verify.sh'",
+            "eval git commit -m x",
+            'git commit -m "$(python3 planted.py)"',
+            "git commit -m `python3 planted.py`",
+            "git commit -F <(python3 planted.py)",
+            "git commit -m x 2>&1 | tail -5",
+            # A redirection runs in the shell outside the sandbox, so it could write anywhere.
+            "git commit -m x > /tmp/out",
+            "scripts/verify.sh >> ~/.bashrc",
+            "scripts/smoke.sh &> log.txt",
+            "scripts/commit.py 'fix(x): y' a.py 2>~/.profile",
+            "git commit -F - < msg.txt",
+            "tests/x/scripts/commit.py 'fix(x): y' a.py",
+            "scripts/commit.py \"fix(x): $(id)\" a.py",
+        )
+        for command in refused:
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, self.project), 2)
+
+    def test_plain_forms_still_run_at_the_root(self) -> None:
+        allowed = (
+            "git add a.py b.py && git commit -m x",
+            'git commit -m "fix: cd handling in commit flow"',
+            "git commit -F msg.txt",
+            "scripts/verify.sh --fast",
+            "./scripts/smoke.sh",
+            "git log --oneline -3",
+            "scripts/commit.py 'fix(api): handle x' src/a.py tests/b.py",
+            'scripts/commit.py "docs(repo): note the flow" docs/a.md',
+        )
+        for command in allowed:
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, self.project), 0)
+
+    def test_unrelated_commands_run_anywhere(self) -> None:
+        for command in ("rg commit docs", "uv run pytest -q", "git diff --stat", "ls scripts"):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, str(self.nested)), 0)
+
+    # V88: a file whose name merely ends like an excluded script is not that script.
+    HARMLESS_MENTIONS = (
+        "python3 -I scripts/test_pre_commit.py",
+        "python3 -I scripts/test_commit.py",
+        "cat scripts/pre_commit.py",
+        "sed -n 1,20p scripts/pre_commit.py",
+        "rg secrets scripts/pre_commit.py scripts/test_pre_commit.py",
+        "uv run ruff check scripts/test_commit.py",
+        "ls scripts/test_commit.py scripts/pre_commit.py",
+        "python3 -I scripts/test_pre_commit.py 2>&1 | tail -3",
+    )
+
+    def test_names_that_only_end_like_an_excluded_script_run_anywhere(self) -> None:
+        for cwd in (str(self.nested), self.project):
+            for command in self.HARMLESS_MENTIONS:
+                with self.subTest(command=command, cwd=cwd):
+                    self.assertEqual(self.exit_code(command, cwd), 0)
+
+    def test_excluded_scripts_named_by_any_path_stay_protected(self) -> None:
+        for command in (
+            "./scripts/commit.py 'fix(x): y' a.py",
+            "scripts//commit.py 'fix(x): y' a.py",
+            f"{self.project}/scripts/commit.py 'fix(x): y' a.py",
+            "commit.py 'fix(x): y' a.py",
+            "../../scripts/verify.sh",
+            "'scripts/smoke.sh'",
+            "bash -c 'scripts/commit.py m a.py'",
+            "nohup scripts/commit.py m a.py",
+            'scripts/commit.py "$(id)" a.py',
+            "scripts/commit.py m a.py > /tmp/out",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(self.exit_code(command, str(self.nested)), 2)
+
+    def test_missing_cwd_fails_closed(self) -> None:
+        payload = {"tool_input": {"command": "git commit -m x"}}
+        self.assertEqual(run_hook("guard_bash.py", payload, self.project).returncode, 2)
 
 
 class ReadOnlyBash(unittest.TestCase):

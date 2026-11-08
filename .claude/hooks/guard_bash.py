@@ -36,7 +36,14 @@ PROTECTED_TARGET = (
 SHELL_WRITE = re.compile(rf"(>>?\s*|\btee\s+(-\S+\s+)*)({PROTECTED_TARGET})")
 SED_IN_PLACE = re.compile(rf"\bsed\b[^|;&]*\s-i\S*[^|;&]*\s({PROTECTED_TARGET})")
 
-LEAVES_SANDBOX = re.compile(r"(^|[;&|]\s*)(git\s+commit\b|(\./)?scripts/(verify|smoke)\.sh\b)")
+# A whole file name: `pre_commit.py` and `test_commit.py` are not `commit.py`.
+EXCLUDED_SCRIPT = re.compile(r"(?<![\w.-])(verify\.sh|smoke\.sh|commit\.py)\b")
+PLAIN_SCRIPTS = {
+    "scripts/verify.sh", "./scripts/verify.sh", "scripts/smoke.sh", "./scripts/smoke.sh",
+    "scripts/commit.py", "./scripts/commit.py",
+}
+# Substitutions and redirections run in the shell itself, which is outside the sandbox.
+SHELL_EFFECT = re.compile(r"\$\(|`|[<>]")
 SHELL_KEYWORDS = {"if", "then", "elif", "else", "for", "while", "until", "do", "!", "{"}
 WRAPPERS = {"sudo", "command", "env", "time", "nohup", "nice", "exec", "xargs", "timeout"}
 SHELLS = {"sh", "bash", "zsh", "dash"}
@@ -281,15 +288,42 @@ def check_command(command: str, depth: int = 0) -> str | None:
     return None
 
 
+def may_leave_sandbox(command: str) -> bool:
+    """Over-approximates the exclusions, which Claude Code matches after stripping wrappers,
+    assignments and quotes. Unquoted words are checked, so quoting cannot hide a match."""
+    words = [word for segment in split_segments(command) for word in segment]
+    commit = any("commit" in word for word in words) or "$'" in command
+    return bool(commit and GIT_WORD.search(command)) or any(
+        EXCLUDED_SCRIPT.search(word) for word in words
+    )
+
+
+def is_plain(segment: list[str]) -> bool:
+    """Only `git <subcommand>` found on PATH, or a project script named exactly."""
+    if segment[0] == "git":
+        return len(segment) > 1 and not segment[1].startswith("-")
+    return segment[0] in PLAIN_SCRIPTS
+
+
 def check_location(command: str, cwd: str | None) -> str | None:
-    """Exclusions match text, so a nested directory could otherwise supply what they execute."""
+    """Exclusions run outside the sandbox, so what they run must be exactly the project's own.
+
+    Anything that could change the program, directory or repository is refused, not interpreted.
+    """
     project = os.environ.get("CLAUDE_PROJECT_DIR")
-    if not project or not cwd or not LEAVES_SANDBOX.search(command):
+    if not project or not may_leave_sandbox(command):
         return None
-    if os.path.realpath(cwd) != os.path.realpath(project):
+    if not cwd or os.path.realpath(cwd) != os.path.realpath(project):
         return "commands that leave the sandbox run only from the project root"
-    if "git" in command and os.path.lexists(os.path.join(project, ".git/commondir")):
-        return ".git/commondir would redirect a commit outside the sandbox"
+    if SHELL_EFFECT.search(command) or not all(
+        is_plain(segment) for segment in split_segments(command)
+    ):
+        return (
+            "commands that leave the sandbox must be plain: no wrappers, assignments, shells, "
+            "substitutions, redirections, pipes, directory changes or git location options"
+        )
+    if os.path.lexists(os.path.join(project, ".git/commondir")):
+        return ".git/commondir would redirect git outside the sandbox"
     return None
 
 
