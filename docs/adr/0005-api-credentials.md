@@ -1,6 +1,8 @@
 # ADR-0005: Opaque scoped tokens stored as SHA-256 digests; OIDC deferred
 
-Status: Proposed · Date: 2026-11-01
+Status: Accepted by the owner on 2026-11-08, for P1 S1. The runtime credential-write model
+(issuance, revocation and `last_used_at` by the runtime role) is reviewed separately before S2;
+until then the runtime role may only read `api_credentials` · Date: 2026-11-01
 
 **Context.** Ingestion needs authenticated, scoped machine credentials with rotation and
 revocation. Human sign-in is separate (ADR-0006).

@@ -1,6 +1,6 @@
 # ADR-0002: Python 3.14, PostgreSQL 18, sync SQLAlchemy with psycopg
 
-Status: Proposed · Date: 2026-11-01
+Status: Accepted by the owner on 2026-11-08, for P1 S1 · Date: 2026-11-01
 
 **Context.** Versions must be supported and proven compatible. Workload is low-volume short
 transactions.
