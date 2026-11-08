@@ -204,6 +204,18 @@ class PreCommit(unittest.TestCase):
         self.repo.git("rm", "-q", "--cached", MIGRATION)
         self.assert_blocked("applied migration")
 
+    def test_never_imports_code_from_the_working_tree(self) -> None:
+        """V66: a commit runs outside the sandbox, so no tool may import an untracked root module.
+
+        import-linter puts its working directory first on sys.path and later imports
+        typing_extensions, so a planted copy at the root would run.
+        """
+        marker = self.repo.path / "planted-ran"
+        self.repo.write("typing_extensions.py", f"open({str(marker)!r}, 'w').close()\n")
+        self.repo.stage("src/shiptrace/a.py", CLEAN_PYTHON)
+        self.repo.run_hook()
+        self.assertFalse(marker.exists())
+
     def test_installed_hook_stops_a_real_commit(self) -> None:
         self.repo.stage(".env", "x\n")
         hooks = self.repo.path / ".git" / "hooks"

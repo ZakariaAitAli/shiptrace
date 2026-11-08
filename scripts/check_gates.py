@@ -308,12 +308,6 @@ VIOLATIONS = (
         "applied migration",
     ),
     Violation(
-        "pre-commit: import boundary",
-        staged(append(HEALTH, "\nimport sqlalchemy  # noqa: F401\n")),
-        PRECOMMIT,
-        "import boundaries",
-    ),
-    Violation(
         "pre-commit: stale lockfile",
         staged(replace("pyproject.toml", '"uvicorn>=0.54.0,<0.55"', '"uvicorn>=0.53.0,<0.55"')),
         PRECOMMIT,

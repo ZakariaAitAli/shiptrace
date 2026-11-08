@@ -1,9 +1,10 @@
 #!/usr/bin/env -S python3 -I
 """pre-commit hook: fast, deterministic checks on staged content.
 
-Paths, secrets, migrations and style read the index, not the working tree. The lockfile and import
-checks need a whole project, so they read the working tree. Any check that cannot run blocks the
-commit. Slower gates live in scripts/verify.sh.
+Paths, secrets, migrations and style read the index, not the working tree. The lockfile check needs
+a whole project, so it reads the working tree. Any check that cannot run blocks the commit. Slower
+gates live in scripts/verify.sh, including import boundaries: import-linter imports modules from its
+working directory, which sandboxed code can write, and a commit runs outside the sandbox.
 """
 
 import re
@@ -126,15 +127,7 @@ def lockfile(files: list[tuple[str, str]]) -> list[str]:
     return [] if result.returncode == 0 else ["uv.lock is stale: run uv lock"]
 
 
-def boundaries(files: list[tuple[str, str]]) -> list[str]:
-    if not any(path.startswith("src/") for _, path in files):
-        return []
-    root = git("rev-parse", "--show-toplevel").stdout.strip()
-    result = tool("lint-imports", "--config", "pyproject.toml", cwd=root)
-    return [] if result.returncode == 0 else [f"import boundaries:\n{result.stdout[-1200:]}"]
-
-
-CHECKS = (forbidden_paths, secrets, applied_migrations, python_style, lockfile, boundaries)
+CHECKS = (forbidden_paths, secrets, applied_migrations, python_style, lockfile)
 
 
 def run_checks(files: list[tuple[str, str]]) -> list[str]:
