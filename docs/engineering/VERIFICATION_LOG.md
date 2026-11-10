@@ -517,3 +517,13 @@ migration, grant, route or dependency changed.
 | V168 | Two targeted mutants | Removing the check that `reverted` requires `succeeded` failed 10 tests. Removing the more-than-one-terminal check failed 11. Both were reverted and the file confirmed identical with `diff`. No broader mutation run was made |
 | V169 | `scripts/verify.sh --fast` | Passed: 540 unit tests; repository, history, commit-rule, hook, lockfile, format, lint, type and import-boundary gates (3 contracts kept) |
 | V170 | Limits | No Docker-backed test, security reviewer or full `scripts/verify.sh` was run, which is intended for a pure-domain checkpoint. Hypothesis is not a locked dependency, so order independence is shown by exhaustive permutation of small sets, not generated histories. Rules R1 to R11 are not yet implemented; the decision function starts at CP12 |
+
+## P1 S3 CP11 prerequisite: field formats, rule precedence and ADR acceptance
+
+Documentation only, run in this session on `0b6a049`. Committed as `45e50ac` (spec) and `81c0378`
+(ADR-0003 and ADR-0004).
+
+| ID | Check | Outcome |
+|---|---|---|
+| V171 | `python3 -I scripts/check_repo.py` after the spec and ADR edits, and again after the IPv4 correction | Passed both times (`repository checks: OK`) |
+| V172 | Scope and limits | The owner approved the final event field formats, the R1 to R11 precedence order and the acceptance of ADR-0003 (terminal types named) and ADR-0004 on 2026-11-10. No code, test or validator changed, and no test suite, Docker run or reviewer was run. `source_url` validation and the precedence order are specified but not yet implemented or tested |
