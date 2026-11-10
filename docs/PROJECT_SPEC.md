@@ -204,6 +204,45 @@ It answers `201` with `Cache-Control: no-store` and `{"id", "name", "scope", "se
 is `null`. The database assigns `id`, `created_at` and `expires_at`. `token` appears in this
 response only: the service stores its SHA-256 digest and the metadata above, never the token.
 
+### Credential listing and revocation
+
+Proposed for owner approval with CP8; enforced by the same database guard (migration `0003`,
+ADR-0012). Both routes are admin only.
+
+Credential object, used by both routes. It holds metadata only: never a token, a digest or any
+part of a token beyond the public `display_prefix`:
+
+```json
+{
+  "id": "<uuid>",
+  "name": "ci payments",
+  "scope": "ingest",
+  "service": "payments-api",
+  "environment": "production",
+  "display_prefix": "st1_AbCd",
+  "created_at": "<RFC 3339>",
+  "expires_at": "<RFC 3339 or null>",
+  "revoked_at": "<RFC 3339 or null>",
+  "last_used_at": "<RFC 3339 or null>"
+}
+```
+
+- `GET /credentials` takes `limit` and `cursor` (see Input formats) and nothing else. It answers
+  `200` with `{"items": [<credential>, ...], "next_cursor": "<opaque>"}`, ordered by `id`
+  ascending (UUIDv7, so oldest first, and unique, so a walk never repeats or skips a row);
+  `next_cursor` is `null` on the last page. Revoked and expired credentials are listed, since the
+  list is the operator's audit view. A cursor is `422` unless it is in the exact form the server
+  issues and names a position in this list.
+- `POST /credentials/{id}/revoke` takes no body; a non-empty one is `422` `validation_failed`
+  (location `body`, rule `body_not_allowed`, never its content) and nothing is revoked. It sets `revoked_at` to the
+  database's time and answers `200` with the credential object. Revoking an already revoked
+  credential also answers `200` with the object as stored: `revoked_at` keeps its first value and
+  the row is not written again. An `id` that names no credential is `404` `not_found`; an `id`
+  that is not a UUID is `422` `validation_failed`. Any scope may be revoked, an admin's own
+  included, and so may an expired credential. Clients never supply a timestamp.
+- Revocation takes effect on the next authenticated request (AC11): authentication reads the
+  stored `revoked_at` on every request, with no cache.
+
 ### Errors
 
 Every error is `application/problem+json` with `type` `urn:shiptrace:problem:<code>`, `title`,
