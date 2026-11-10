@@ -68,7 +68,7 @@ deployment_events(                             -- append-only
   type CHECK (type IN (...)),
   source_url, reason,
   credential_id FK RESTRICT,                   -- who reported it
-  received_at timestamptz DEFAULT now(),
+  received_at timestamptz DEFAULT clock_timestamp(),  -- insert time, not a commit order
   UNIQUE (deployment_id, type))
 UNIQUE (deployment_id) WHERE type IN ('succeeded','failed','cancelled')   -- terminal slot
 
@@ -82,6 +82,11 @@ dashboard_sessions(id, token_sha256 UNIQUE, user_id FK,
   created_at, last_seen_at, expires_at, revoked_at)
 ```
 
+Migration `0004` creates the two tables with only the indexes their constraints need. The read-path
+indexes below are added in P2, once they can be measured. `seq` and `received_at` are assigned when
+a row is inserted, not when it commits, so neither is a commit order: a transaction can commit
+after one that inserted later.
+
 Indexes follow the read paths: `deployments (service_id, environment_id, id DESC)`,
 `(environment_id, id DESC)` and `(service_id, id DESC)` for history, and `deployment_events
 (received_at)` for metrics. "Latest" joins a pair's deployments to their `succeeded` events,
@@ -93,7 +98,7 @@ A report committed late may be missed while paging; a reload shows it.
 
 | Table | `shiptrace_app` may |
 |---|---|
-| `deployments`, `deployment_events` | `SELECT, INSERT` |
+| `deployments`, `deployment_events` | `SELECT`, and `INSERT` on the reported columns only, so ids, `seq` and timestamps come from the database and cannot be chosen (migration `0004`). `deployments`: `service_id`, `environment_id`, `deployment_key`, `version`, `commit_sha`. `deployment_events`: `deployment_id`, `type`, `source_url`, `reason`, `credential_id`. No sequence privilege is needed for the identity column |
 | `services`, `environments` | `SELECT`, and `INSERT (slug)` only, so ids and timestamps come from the database (migration `0002`) |
 | `api_credentials` | `SELECT`; `INSERT` of the issuing columns only (not `id`, `created_at`, `revoked_at`, `last_used_at`); `UPDATE (revoked_at, last_used_at)` only. A guard trigger refuses admin scope and any timestamp other than database time (migration `0003`, ADR-0012). Admin credentials come from the bootstrap CLI under the migrator role |
 | `dashboard_users` | `SELECT` only: accounts are managed by the CLI under the migrator role |
@@ -106,10 +111,21 @@ from local PostgreSQL. Migrations only grant to roles that already exist.
 
 ### Append-only, in two independent layers
 
-1. **Privilege**: the runtime role `shiptrace_app` has only `SELECT, INSERT` on `deployments`
-   and `deployment_events`. The owner role `shiptrace_migrator` is used only by migrations.
+1. **Privilege**: the runtime role `shiptrace_app` has `SELECT` and a column-limited `INSERT` on
+   `deployments` and `deployment_events` (see the grants table). The owner role
+   `shiptrace_migrator` is used only by migrations.
 2. **Trigger**: `BEFORE UPDATE OR DELETE` row triggers and a `BEFORE TRUNCATE` statement
-   trigger raise an exception, which also stops an owner-role mistake.
+   trigger raise an exception, which also stops an owner-role mistake. The functions run with the
+   caller's rights, pin `search_path` and raise fixed messages that carry no value. The owner can
+   still disable a trigger with `ALTER TABLE`; that is a residual risk, not a claim.
+
+Two more guards sit in the same migration. A `BEFORE INSERT` trigger refuses `reverted` unless the
+same deployment already holds a `succeeded` event: defense in depth for R9 and R10, since a bad
+event could never be corrected. The application decision stays the primary rule. CHECK constraints
+enforce a documented subset of the field formats: `deployment_key`, `version` and `commit_sha`
+exactly, `source_url` only by length and character set, `reason` only by length and the absence of
+control and bidirectional override characters. The Python validators stay the authority for
+userinfo, ports, hosts, percent escapes and a second `#`.
 
 ### Why status is derived, not stored
 
