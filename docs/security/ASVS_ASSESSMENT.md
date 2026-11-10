@@ -74,6 +74,26 @@ Legend: `Planned` will be verified · `N/A` feature absent, by design · `Risk` 
 | 15.3.1, 15.3.3 | L1–L2 | Field limits, mass assignment | Explicit schemas, `extra="forbid"` | Planned |
 | 15.3.4 | L2 | Original client IP | Trusted-proxy config | Planned |
 | 16.1.1, 16.2.1–16.2.5 | L2 | Log inventory and metadata | Runbook; structured UTC logs | Planned |
-| 16.3.1–16.3.4 | L2 | Security events | Auth, authorization, credential lifecycle | Planned |
+| 16.3.1–16.3.4 | L2 | Security events | Auth, authorization, credential lifecycle. S2 gap: issuance and revocation log nothing yet (THREAT_MODEL T30) | Planned |
 | 16.4.1 | L2 | Log injection | JSON encoding | Planned |
 | 16.5.1–16.5.3 | L2 | Safe errors, fail closed | Generic problem documents; deny when auth lookup fails | Planned |
+
+## S2 evidence index (credential write model, ADR-0012)
+
+Added at the P1 S2 closeout. It links existing evidence to the rows above and **does not change
+any status**: every row stays `Planned`, because a row passes only in the final assessment (P6),
+against its full requirement text, and several rows below depend on controls that are not built
+yet. Evidence IDs are in [VERIFICATION_LOG.md](../engineering/VERIFICATION_LOG.md).
+
+| Rows | What S2 evidence exists | What is still missing before `Pass` |
+|---|---|---|
+| 1.2.4 | Credential SQL uses bound parameters or fixed text; the guard is exercised by upserts and `MERGE` (V146, V156) | Ruff `S608` result recorded for the whole code base |
+| 2.3.3 | One transaction per use case for issuance and revocation; usage write in its own best-effort transaction (V152, V156, V160) | Same evidence for ingestion (P1 S3) |
+| 6.3.2 | Admin credentials come only from the bootstrap CLI; the API and the runtime role cannot issue them (V152, V146) | A recorded clean-install walk-through of the CLI |
+| 8.1.1, 8.2.1, 8.2.2, 8.3.1 | Scope table and route-generated negative tests cover the credential routes; admin-only issuance, listing and revocation (V152, V156) | Binding enforcement on ingest routes (S3, AC7) |
+| 11.4.1, 11.4.3 | Tokens stored only as SHA-256 digests; a scan of every column of every table finds no token (V152) | Final assessment |
+| 13.2.2, 13.2.3 | Runtime role limited to seven insert columns and `UPDATE (revoked_at, last_used_at)`; exact privilege matrix and guard tests (V146, V160) | Accepted residual risk T28; Option B review before production; production role setup (P7) |
+| 14.2.1, 14.3.2 | Token appears only in the `201` body, with `Cache-Control: no-store`; no token or digest in listings, errors or logs (V152, V156) | Sentinel test across all log output (AC10, P3) |
+| 16.3.1–16.3.4 | None for credential lifecycle | Logging of issuance and revocation (T30); AC18 |
+| 16.5.1–16.5.3 | Authentication lookup failure answers `503` rather than allowing access; a failed usage write never changes the response (V160) | Review of all routes at the final assessment |
+| AC11 | Digest-only storage and revocation on the next request, with no cache (V156) | None known for S2 |

@@ -206,8 +206,8 @@ response only: the service stores its SHA-256 digest and the metadata above, nev
 
 ### Credential listing and revocation
 
-Proposed for owner approval with CP8; enforced by the same database guard (migration `0003`,
-ADR-0012). Both routes are admin only.
+Approved by the owner with CP8 and implemented at `e03637c`; enforced by the same database guard
+(migration `0003`, ADR-0012). Both routes are admin only.
 
 Credential object, used by both routes. It holds metadata only: never a token, a digest or any
 part of a token beyond the public `display_prefix`:

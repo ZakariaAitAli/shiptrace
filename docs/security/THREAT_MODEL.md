@@ -1,8 +1,11 @@
 # ShipTrace — Threat Model
 
-Status: **Design-time, P0**. Only settings validation, database roles, health endpoints and
-development guardrails exist; almost no control below is implemented yet. "Verification" names the
-evidence that must exist before a control may be claimed. Revisit at every phase boundary.
+Status: **Design-time, revisited at the P1 S2 closeout**. The settings, database roles, health
+endpoints, bearer authentication, credential storage, the registry, and credential issuance,
+listing, revocation and usage tracking now exist (verification log V105 to V161). Most controls
+below are still not implemented, and T28 to T31 were added for S2. "Verification" names the
+evidence that must exist before a control may be claimed: where a row cites no evidence, the
+control is not claimed. Revisit at every phase boundary.
 
 Method: STRIDE over the trust boundaries below, scoped to a small internal tool.
 
@@ -57,7 +60,7 @@ A *stolen* admin token is in scope (T27).
 | T16 | Information leak through errors or docs (I) | A1 | Generic errors with correlation ID; docs disabled in production; `404` for unknown routes | AC10, contract tests | Low |
 | T17 | Log injection (T) | A2 | JSON encoding; client text never logged | AC10 | Low |
 | T18 | SSRF (T) | A2 | The server fetches nothing from user input, and `source_url` is only displayed | Review | None by design |
-| T19 | Database credential exposure (I, E) | A4 | Secrets Manager, least-privilege runtime role, no secrets in image or logs | Image scan, IAM review (P7) | Low |
+| T19 | Database credential exposure (I, E) | A4 | Secrets Manager, least-privilege runtime role, no secrets in image or logs | Image scan, IAM review (P7) | Low for exposure; the runtime role has credential write grants since migration `0003`, so see T28 for what exposure now allows |
 | T20 | Malicious dependency (T, E) | A4 | Hashed `uv.lock`, `pip-audit`, Dependabot review, SBOM, no install-time network in runtime image | CI gates | **Medium**: pinning freezes a bad version as faithfully as a good one |
 | T21 | Compromised action or tag-moving attack (T) | A4 | `actions.lock` for transitive pins, minimal `permissions`, zizmor | AC21 | Low to medium; a lockfile pins, but does not vet |
 | T22 | Unverified or swapped image in production (T) | A4 | Digest-only promotion, provenance and SBOM attestations verified before deploy | AC22 | Low |
@@ -65,7 +68,11 @@ A *stolen* admin token is in scope (T27).
 | T24 | Prompt injection through fetched docs, dependencies or issues (T) | A5 | No auto-installed plugins, no MCP servers, review of third-party content, human gate on outward actions | Config check | Medium; inherent to agent use |
 | T25 | Key squatting: a stolen token pre-posts `failed` for a predictable future `gha-<run_id>-<attempt>` key, so the real `succeeded` is refused forever (T, D) | A2 | Binding limits scope; `409` is logged and counted; the example surfaces it as a warning | AC23 | **Medium**: that deployment's history stays wrong; accepted |
 | T26 | Rollback steering: forged `reverted` events walk "latest" back to an old, vulnerable version, and people redeploy it (T) | A2 | Mandatory environment binding, so a staging token cannot touch production; attribution; dashboard shows `reverted` with its reporter | AC7 | **Medium**: a production token can still do this until revoked |
-| T27 | Stolen `admin` token (E) | A1, A3 | Tokens never enter a browser, because the dashboard has its own accounts; lifecycle events logged; recovery revokes the token *and* everything it issued | AC24, AC25 | Medium: full control until noticed |
+| T27 | Stolen `admin` token (E) | A1, A3 | Tokens never enter a browser, because the dashboard has its own accounts; lifecycle events logged (**not yet: see T30**); recovery revokes the token *and* everything it issued (**not yet possible to enumerate: see T30**) | AC24, AC25 | Medium: full control until noticed |
+| T28 | A compromised runtime database credential, or SQL injection in the runtime, abuses the credential write grants added by migration `0003` (E, T, D) | A1, A2 | ADR-0012 Option A: `INSERT` on seven columns and `UPDATE (revoked_at, last_used_at)` only; a guard trigger refuses admin issuance, any expiry but `NULL` or `now()` plus 1 to 365 whole days, a `revoked_at` or `last_used_at` other than exactly `now()`, and a backwards `last_used_at`; the role owns neither the table nor the function, so it cannot disable the guard; no `DELETE` or `TRUNCATE` | S2 integration tests (V152, V156, V160): exact privilege matrix, guard refusals, upserts and `MERGE` meeting the guard, every attempt to disable, drop or replace the guard refused, 0003 round trip. The guard's behavior under a superuser or the migrator is out of scope | **Medium**, accepted: the holder can still issue read and ingest credentials for any registered binding, revoke any credential (admin ones included, a denial of service the bootstrap CLI repairs), and mark credentials used now. It cannot issue admin credentials, change scope or binding, delete rows, or forward-date any timestamp; it can backdate only inside a transaction it holds open. Option B (`SECURITY DEFINER` functions) is the strengthening path and needs a new ADR before the first production deployment |
+| T29 | Lock contention on a credential row delays or fails authenticated requests through the usage write (D) | A2, A3 | Fresh credentials cause no write: staleness is decided in the lookup by database time, and the write happens at most once per 5 minutes per credential. The usage write is a filtered `UPDATE` in its own transaction with `SET LOCAL lock_timeout = '100ms'`, best effort: a timeout, error or lost commit is rolled back and logged without detail, and authentication still succeeds. An unknown token never reaches the write | V160: boundary tests, a real row lock held past the timeout, a deterministic two-connection race, 8 parallel first uses, HTTP unchanged on failure, `lock_timeout` back to 0 on the pooled connection | Low. The extra delay is bounded by 100 ms plus a round trip, and only for a stale credential whose row is locked. Two gaps, below: the fixed 100 ms exceeds a configured `db_lock_timeout_ms` lower than 100 (the setting allows 1 ms and up), and a permanently failing usage write (for example a missing grant) logs one warning per stale request and alerts nothing |
+| T30 | No attribution of credential issuance or revocation (R) | A1, A3 | None yet. ADR-0012 defers audit columns; application logs are the only planned source, and none exist for these actions | Not evidenced: `src` has one logger, which reports only a failed usage write. AC18 and AC25 are P3 | **Medium**: after a stolen admin token, the system cannot say which credentials it issued or revoked, so T27's "revoke everything it issued" cannot be carried out from the data. Fix before release: log an allowlisted line (action, acting credential id, target id) on issue and revoke, or add audit columns |
+| T31 | An admin credential revoked after authentication but before its insert still issues one credential in that request (E) | A2 | Revocation is read on every request with no cache (AC11); the window is one request | V150: confirmed by reading, accepted. A re-check inside the issuing transaction would change the authentication model for every route | Low: bounded to the single in-flight request |
 
 ## 5. Failure-mode decision: reporting must not break deploys
 
@@ -86,3 +93,8 @@ deploy**. This trades completeness for availability of the system people care ab
 8. T23: the guards and sandbox are active, but an approved full run still executes agent-edited
    code outside the sandbox, and signatures cannot be verified inside it. `onFailure: block` on a
    hook timeout has never been triggered.
+9. T28 (ADR-0012): the runtime role can issue read and ingest credentials for any registered
+   binding, revoke any credential and mark credentials used. Reconsider Option B before the first
+   production deployment.
+10. T30: issuance and revocation are not attributable to an admin credential. Not acceptable for
+    release without a log line or audit columns; recorded here so it is not forgotten.
