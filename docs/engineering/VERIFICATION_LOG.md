@@ -540,3 +540,20 @@ Run in this session on `0b523b2`, with CP11 committed as `f8e8c0c`. Pure domain 
 | V175 | Owner decisions recorded as tests or kept | DEL (U+007F) rejected in `reason`; numeric-looking hosts must be valid IPv4 (`999.1.1.1`, `1.2.3`, `123` rejected); a port with leading zeros is accepted when its value is 1 to 65535 (`https://ci.example.com:0080/` added as a test); U+2028, U+2029, U+200E and U+200F stay allowed in `reason` |
 | V176 | `uv run --frozen pytest tests/unit/test_event_fields.py -q`, then `scripts/verify.sh --fast` | Passed: 301 tests in the new file; 841 unit tests in the fast gate; repository, history, hook, lockfile, format, lint, type and import-boundary gates (3 contracts kept) |
 | V177 | Limits | Docker-backed tests, security reviewers and the full `scripts/verify.sh` were intentionally omitted for a pure-domain checkpoint. The validators are not yet wired to any route or store, so no HTTP or database behavior is claimed. The allowance for U+2028, U+200E and U+200F is pinned by a test; U+2029 is not |
+
+## P1 S3 CP12: deployment decision rules R1 to R10
+
+Run in this session on `fbed5a5`, with CP12 committed as `e65a715`. Pure domain change in
+`domain/deployments.py`: `NewEvent`, `StoredEvent`, `DeploymentFacts`, `Accept`, `Duplicate`,
+`Reject`, `RejectReason` and `decide`. No migration, route or dependency changed, and R11 is not
+part of it.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V178 | Test-first implementation | `tests/unit/test_deployment_decision.py` was written first and failed at collection with `ImportError: cannot import name 'Accept'`. After the implementation, the new file and the CP10 status tests passed together (209 tests). A missing `dataclass` import, removed by the formatter hook after a first partial edit, was restored before that run |
+| V179 | Independently specified matrix | A hand-written table of the expected outcome for each of the 9 valid stored event sets against each of the 5 incoming types (45 cases), with identical content so only the rules decide. A guard test checks that the table covers every valid set. The table was written from the spec's precedence order, not from the code |
+| V180 | Other coverage | Per rule R1 to R10, including R7 leaving derived status unchanged; R3 returning the stored event object itself and not mutating its input; R4 with absent against present content and exact-case comparison; R5 for every event type and ahead of R3, R4, R6, R9 and R10; a replay of the stored terminal event as R3 or R4 and not R6; a `reverted` replay as R3 or R4 and not R9 or R10; stable rejection codes; frozen value types; independence from stored-event order; 10 corrupt stored sets against all 5 incoming types raising `ValueError`, including before an attribute conflict |
+| V181 | Retryability | Fixed by the owner: only `revert_requires_success` is retryable; `event_conflict`, `deployment_attribute_conflict`, `terminal_conflict` and `revert_not_applicable` are not. The flag is a domain classification only. No HTTP `Retry-After` is derived from it; that mapping belongs to S5 |
+| V182 | Targeted mutants | 13 one-line mutants of `decide` and `RejectReason`: the R5 check (both parts, and `or` to `and`), the R4 comparison (each half), the identity of the returned original, R10, R9 with a deployment, R9 with none, R6, the retryable flag, the corruption check, same-type replay of `reverted`, and a frozen `Reject`. All 13 were caught. No broader mutation run was made |
+| V183 | `scripts/verify.sh --fast` | Passed: 998 unit tests (841 before CP12, 157 new); repository, history, hook, lockfile, format, lint, type and import-boundary gates (3 contracts kept) |
+| V184 | Limits | Docker-backed tests, security reviewers and the full `scripts/verify.sh` were intentionally omitted for a pure-domain checkpoint. `decide` is not wired to any route or store. It trusts format-checked input, and it raises on corrupt stored data instead of returning a decision; how S4 and S5 handle that is not yet decided |
