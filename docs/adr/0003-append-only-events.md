@@ -1,6 +1,6 @@
 # ADR-0003: Append-only events, natural idempotency key, server time only
 
-Status: Proposed · Date: 2026-11-01
+Status: Accepted by the owner on 2026-11-10 · Date: 2026-11-01
 
 **Context.** CI retries requests, networks reorder them, and history must be trustworthy.
 
@@ -8,8 +8,8 @@ Status: Proposed · Date: 2026-11-01
 1. `deployments` and `deployment_events` are insert-only, enforced by role privileges *and*
    triggers.
 2. The idempotency key is natural: (service, environment, deployment_key, event type). A
-   deployment holds at most one event per type and one terminal event, enforced by unique
-   indexes.
+   deployment holds at most one event per type and one terminal event (`succeeded`, `failed` or
+   `cancelled`), enforced by unique indexes.
 3. `received_at` is server-assigned. The API has no client timestamp field.
 4. Conflicts are resolved by constraints and target-less `ON CONFLICT DO NOTHING`; first commit
    wins. Every rejection rolls back, and a rejected `reverted` never creates a deployment.

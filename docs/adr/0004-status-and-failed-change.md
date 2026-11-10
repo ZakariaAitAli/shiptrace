@@ -1,6 +1,6 @@
 # ADR-0004: Derived status and the definition of a failed change
 
-Status: Proposed · Date: 2026-11-01
+Status: Accepted by the owner on 2026-11-10 · Date: 2026-11-01
 
 **Context.** The brief requires a definition of failed change and honest metric limits.
 
