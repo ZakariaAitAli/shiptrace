@@ -17,7 +17,7 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictRegistry, DictStore
+from .fakes import DictIssuer, DictRegistry, DictStore
 
 TOKENS = {scope: new_token() for scope in Scope}
 STORE = DictStore(
@@ -27,7 +27,11 @@ STORE = DictStore(
     }
 )
 APP = build_api(
-    readiness=lambda: True, docs_enabled=False, credentials=STORE, registry=DictRegistry()
+    readiness=lambda: True,
+    docs_enabled=False,
+    credentials=STORE,
+    registry=DictRegistry(),
+    issuer=DictIssuer(),
 )
 # Which scopes may call each protected route; anything absent here fails the completeness test.
 ALLOWED = {
@@ -35,9 +39,12 @@ ALLOWED = {
     ("POST", "/api/v1/services"): {Scope.ADMIN},
     ("GET", "/api/v1/environments"): {Scope.ADMIN, Scope.READ},
     ("POST", "/api/v1/environments"): {Scope.ADMIN},
+    ("POST", "/api/v1/credentials"): {Scope.ADMIN},
 }
 
 
+# A valid body where a route needs more than a slug, so an allowed scope reaches the use case.
+BODIES = {"/api/v1/credentials": {"name": "route auth", "scope": "read"}}
 PUBLIC = {("GET", "/healthz"), ("GET", "/readyz")}
 
 
@@ -68,7 +75,7 @@ def test_the_route_table_and_the_schema_agree() -> None:
 
 def call(method: str, path: str, authorization: str | None) -> int:
     headers = {} if authorization is None else {"Authorization": authorization}
-    body = {"slug": "route-auth"} if method == "POST" else None
+    body = BODIES.get(path, {"slug": "route-auth"}) if method == "POST" else None
     return CLIENT.request(method, path, headers=headers, json=body).status_code
 
 

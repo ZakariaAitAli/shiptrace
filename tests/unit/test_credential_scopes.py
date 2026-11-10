@@ -12,6 +12,9 @@ EXPECTED = {
     (Scope.READ, Action.VIEW_REGISTRY): True,
     (Scope.INGEST, Action.REGISTER): False,
     (Scope.INGEST, Action.VIEW_REGISTRY): False,
+    (Scope.ADMIN, Action.ISSUE_CREDENTIAL): True,
+    (Scope.READ, Action.ISSUE_CREDENTIAL): False,
+    (Scope.INGEST, Action.ISSUE_CREDENTIAL): False,
 }
 
 

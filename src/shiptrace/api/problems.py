@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from starlette.routing import Match
 
 from shiptrace.application.access import Forbidden, StoreUnavailable, Unauthenticated
+from shiptrace.application.credentials import IssuanceRejected
 from shiptrace.application.registry import AlreadyExists, InvalidPage, InvalidSlug
 
 MEDIA_TYPE = "application/problem+json"
@@ -120,7 +121,13 @@ def install_problem_handlers(app: FastAPI) -> None:
     async def invalid_page(_: Request, __: Exception) -> JSONResponse:
         return problem("validation_failed", errors=[{"location": "query", "rule": "invalid_page"}])
 
+    async def issuance_rejected(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, IssuanceRejected)  # noqa: S101 - registered for this type
+        errors = [{"location": f"body.{p.field}", "rule": p.rule} for p in error.problems]
+        return problem("validation_failed", errors=errors)
+
     app.add_exception_handler(AlreadyExists, already_exists)
+    app.add_exception_handler(IssuanceRejected, issuance_rejected)
     app.add_exception_handler(InvalidSlug, invalid_slug)
     app.add_exception_handler(InvalidPage, invalid_page)
     app.add_exception_handler(Unauthenticated, unauthenticated)
