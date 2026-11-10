@@ -116,6 +116,16 @@ class Reject:
 type Decision = Accept | Duplicate | Reject
 
 
+def binding_matches(
+    bound_service: str, bound_environment: str, service: str, environment: str
+) -> bool:
+    """R11: the event names exactly the service and environment its credential is bound to.
+
+    It sees slugs only, never a registry or a deployment, so the answer is the same whether or not
+    the target exists. Matching is exact: no case folding, trimming or Unicode normalization."""
+    return service == bound_service and environment == bound_environment
+
+
 def decide(incoming: NewEvent, existing: DeploymentFacts | None) -> Decision:
     """Classify one event against the committed state of its deployment (spec §3, Precedence).
 
