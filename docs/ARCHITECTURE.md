@@ -95,7 +95,7 @@ A report committed late may be missed while paging; a reload shows it.
 |---|---|
 | `deployments`, `deployment_events` | `SELECT, INSERT` |
 | `services`, `environments` | `SELECT`, and `INSERT (slug)` only, so ids and timestamps come from the database (migration `0002`) |
-| `api_credentials` | `SELECT` only. Admin credentials come from the bootstrap CLI under the migrator role; runtime writes are decided before S2 (ADR-0005) |
+| `api_credentials` | `SELECT`; `INSERT` of the issuing columns only (not `id`, `created_at`, `revoked_at`, `last_used_at`); `UPDATE (revoked_at, last_used_at)` only. A guard trigger refuses admin scope and any timestamp other than database time (migration `0003`, ADR-0012). Admin credentials come from the bootstrap CLI under the migrator role |
 | `dashboard_users` | `SELECT` only: accounts are managed by the CLI under the migrator role |
 | `dashboard_sessions` | `SELECT, INSERT`; `UPDATE (last_seen_at, revoked_at)` only |
 | `alembic_version` | `SELECT` |

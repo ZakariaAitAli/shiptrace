@@ -207,13 +207,7 @@ def test_runtime_privileges_are_exactly_the_approved_ones(
         for column, insertable in (("slug", True), ("id", False), ("created_at", False)):
             query = f"SELECT has_column_privilege('shiptrace_app', '{table}', '{column}', 'INSERT')"
             assert scalar(admin, query) is insertable, f"{table}.{column}"
-    for column in CREDENTIAL_COLUMNS:
-        for privilege in ("INSERT", "UPDATE"):
-            query = (
-                "SELECT has_column_privilege('shiptrace_app', 'api_credentials', "
-                f"'{column}', '{privilege}')"
-            )
-            assert scalar(admin, query) is False, f"{column} {privilege}"
+    # The credential column grants added by migration 0003 are pinned in test_credential_writes.
 
 
 @pytest.mark.parametrize("table", REGISTRY_TABLES)
@@ -237,15 +231,13 @@ def test_runtime_cannot_change_or_reshape_registry_tables(
 @pytest.mark.parametrize(
     "statement",
     [
-        INSERT_CREDENTIAL,
-        "UPDATE api_credentials SET revoked_at = now()",
-        "UPDATE api_credentials SET last_used_at = now()",
+        INSERT_CREDENTIAL,  # An admin credential: refused by the 0003 guard, never by grants alone.
         "DELETE FROM api_credentials",
         "TRUNCATE api_credentials",
         "ALTER TABLE api_credentials DROP CONSTRAINT api_credentials_binding",
     ],
 )
-def test_runtime_can_only_read_credentials(
+def test_runtime_cannot_issue_admin_or_remove_credentials(
     migrated_database: Database, engine_for: EngineFor, statement: str
 ) -> None:
     app = engine_for(migrated_database.app_url)

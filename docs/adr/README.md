@@ -17,3 +17,4 @@ edited; a later ADR supersedes it.
 | [0009](0009-supply-chain.md) | Locked builds, `actions.lock`, digest promotion, attestations |
 | [0010](0010-claude-code-configuration.md) | Minimal Claude Code config; enforcement over instruction |
 | [0011](0011-schema-compatibility-readiness.md) | Readiness and schema compatibility |
+| [0012](0012-credential-write-model.md) | Runtime credential writes: column grants and a guard trigger |

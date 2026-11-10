@@ -203,7 +203,8 @@ def test_writer_checks_the_connected_role(
 def test_database_refuses_the_runtime_role_too(
     migrated_database: Database, engine_for: EngineFor
 ) -> None:
-    """The third layer: the runtime role has no INSERT on api_credentials (migration 0002)."""
+    """The third layer: the database refuses an admin credential from the runtime role (the
+    migration 0003 guard; before it, migration 0002 granted no INSERT at all)."""
     writer = PostgresAdminCredentialWriter(engine_for(migrated_database.app_url), "shiptrace_app")
     with pytest.raises(CredentialNotStored) as caught:
         writer.add_admin(NAME, bytes(32), "st1_AAAA")
