@@ -74,6 +74,21 @@ A deployment holds at most one event of each type and at most one of
 | R10 | `reverted` when the deployment is `failed` or `cancelled` | `409 revert_not_applicable`; not retryable |
 | R11 | Service or environment differs from the credential's binding, whether or not it exists | `403`, identical in both cases; nothing written |
 
+**Precedence.** When more than one row could apply, the first step below that applies decides:
+
+1. R11, from the credential and the body's slugs alone, before anything is looked up.
+2. The deployment does not exist: R9 for `reverted`, otherwise R1.
+3. R5: a `version` or `commit_sha` that differs from the deployment's, even for a replay.
+4. A `reverted` event is already stored: R3 or R4. Otherwise a new `reverted` is R9 when the
+   deployment has no terminal event, R10 when its terminal event is `failed` or `cancelled`, and
+   accepted when it is `succeeded`.
+5. An event of the same type is already stored: R3 or R4.
+6. A different terminal event is stored: R6.
+7. Otherwise accepted: R2, with R7 and R8 as the cases that need no check.
+
+Identical content (R3) means the same `reason` and `source_url`, where an absent value equals only
+an absent value. `version` and `commit_sha` are compared under R5, not R3.
+
 Every rejection rolls back its transaction, so a rejected event can never leave a deployment
 row behind. Rejected events are logged and counted, not stored. The event log holds only
 accepted facts.
@@ -139,25 +154,48 @@ Event body (all fields are length- and pattern-validated; unknown fields rejecte
 }
 ```
 
-`source_url` must be `https`. `reason` is optional free text up to 500 characters; it is
-rendered escaped and never logged.
+`service`, `environment`, `deployment_key`, `type`, `version` and `commit_sha` are required.
+`source_url` and `reason` are optional. `reason` is rendered escaped and never logged;
+`source_url` is display-only and ShipTrace never fetches it. Field rules are under Input formats.
 
 ### Input formats
 
-Approved by the owner on 2026-11-08. Values are ASCII, matched exactly and never normalized: an
-uppercase slug is rejected, not lowercased.
+Approved by the owner on 2026-11-08; the event fields on 2026-11-10. Values are matched exactly and
+never normalized: an uppercase slug is rejected, not lowercased. Every value is ASCII except
+`reason`.
 
 | Field | Rule |
 |---|---|
 | Service and environment slug | 1–63 characters of `a-z`, `0-9` and `-`; starts and ends with a letter or digit; no `--` |
 | Credential name | 1–64 characters of `A-Z`, `a-z`, `0-9`, space, `.`, `_` and `-`; starts and ends with a letter or digit; not unique |
 | Page size `limit` | 1–100, default 50; the cursor is opaque |
+| `deployment_key` | Required. `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`; case-sensitive |
+| `version` | Required. `[A-Za-z0-9][A-Za-z0-9._+-]{0,127}` |
+| `commit_sha` | Required. Exactly 40 or 64 lowercase hexadecimal characters |
+| `source_url` | Optional. At most 2048 characters; the rules below |
+| `reason` | Optional. 1–500 Unicode code points, counted after JSON parsing. LF and TAB are allowed. Other control characters (C0 and C1), NUL, lone surrogates and the bidirectional override and isolate characters U+202A–U+202E and U+2066–U+2069 are rejected |
 
-Provisional, finalized in the ingestion slice: `version` is
-`[A-Za-z0-9][A-Za-z0-9._+-]{0,127}`; `commit_sha` is exactly 40 or 64 lowercase hexadecimal
-characters; `deployment_key` is `[A-Za-z0-9][A-Za-z0-9._-]{0,127}`; `source_url` starts with
-`https://`, has a host, carries no user information, whitespace or control characters, uses
-Punycode for international names, and is at most 2048 characters.
+Event fields are strings only: a number, boolean or other type is `422`, never coerced. An empty
+string is `422` for every field. A required field that is omitted or `null` is `422`. An optional
+field that is omitted or `null` is absent, and the two are the same.
+
+`source_url` is display-only and is never fetched. It is checked in this order:
+
+1. Every character is in the RFC 3986 set: `A-Z a-z 0-9 - . _ ~ : / ? # [ ] @ ! $ & ' ( ) * + , ; = %`.
+   So there is no whitespace, control character, non-ASCII character or backslash. An
+   international host name must be Punycode (`xn--`), and other non-ASCII text percent-encoded.
+2. It starts with lowercase `https://` and is split with `urllib.parse.urlsplit`; the checks
+   below then run on the parts.
+3. A host is required. A host made only of digits and dots must be accepted by
+   `ipaddress.IPv4Address`, so `999.1.1.1` is rejected. Any other DNS name has labels of 1–63
+   characters from `A-Za-z0-9-`, none starting or ending with a hyphen, at most 253 characters in
+   all, and no trailing dot. An IPv6 literal is in brackets, is accepted by
+   `ipaddress.IPv6Address`, and has no zone identifier.
+4. There is no user information (`@` in the authority). A port is optional: 1–65535, digits only.
+5. Every `%` is followed by two hexadecimal digits, and the escape is not a control octet
+   (`%00`–`%1F`, `%7F`). Escapes are never decoded.
+6. Path, query and fragment are kept exactly as sent: nothing is trimmed, decoded or reordered. A
+   second `#` is rejected.
 
 ### Registry bodies
 
