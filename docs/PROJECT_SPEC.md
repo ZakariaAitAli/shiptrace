@@ -13,7 +13,7 @@ metrics through an API and a small dashboard.
 | CI/CD pipeline | `ingest` credential bound to exactly one service and one environment | Record events for that service only |
 | Engineer (browser) | Named dashboard account and password, never an API token | View everything; change nothing |
 | Script reading the API | `read` credential | View everything; change nothing |
-| Operator | `admin` credential | Register services/environments; issue, list and revoke credentials |
+| Operator | `admin` credential | Register services/environments; issue `read` and `ingest` credentials; list and revoke credentials |
 
 Dashboard accounts are created by an operator through the CLI and have no roles. There is no
 self-service registration and no organizations. See §9.
@@ -168,6 +168,18 @@ ordered by slug in byte order; `next_cursor` is `null` on the last page. A curso
 it is in the exact form the server issues and names a position in the list it is sent to, so a
 services cursor is refused by `/environments`. Cursors are not signed: a client that builds one
 can only start a list at a slug of its choosing, which reveals nothing more than the list itself.
+
+### Credential issuance
+
+Approved by the owner on 2026-11-08; enforced by the database (migration `0003`, ADR-0012).
+
+- `POST /credentials` issues `read` and `ingest` credentials only. Admin credentials come only from
+  the bootstrap CLI under the migrator role.
+- `expires_in_days` is optional, an integer from 1 to 365. Omitted means no expiry.
+- Expiry is counted in elapsed 24-hour days from the database's time at issuance, whatever the
+  time zone or daylight-saving changes.
+
+The full request and response bodies are defined before the credential API is built.
 
 ### Errors
 
