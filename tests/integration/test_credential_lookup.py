@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 
 from shiptrace.api.auth import require
@@ -92,6 +92,17 @@ def test_active_credential_is_found_by_digest(
     assert principal is not None
     assert principal.scope is Scope.ADMIN
     assert (principal.service_id, principal.environment_id) == (None, None)
+    assert (principal.service_slug, principal.environment_slug) == (None, None)
+
+
+def test_read_credential_has_no_binding(
+    store: PostgresCredentialStore, insert_credential: Insert
+) -> None:
+    principal = store.find_active(digest(insert_credential(scope="read")))
+    assert principal is not None
+    assert principal.scope is Scope.READ
+    assert (principal.service_id, principal.environment_id) == (None, None)
+    assert (principal.service_slug, principal.environment_slug) == (None, None)
 
 
 def test_ingest_binding_is_returned(
@@ -101,6 +112,114 @@ def test_ingest_binding_is_returned(
     assert principal is not None
     assert principal.scope is Scope.INGEST
     assert principal.service_id is not None and principal.environment_id is not None
+    assert principal.service_slug is not None and principal.environment_slug is not None
+
+
+def slug_of(engine: Engine, kind: str, row_id: uuid.UUID) -> object:
+    statements = {
+        "services": text("SELECT slug FROM services WHERE id = :id"),
+        "environments": text("SELECT slug FROM environments WHERE id = :id"),
+    }
+    with engine.connect() as connection:
+        return connection.execute(statements[kind], {"id": row_id}).scalar_one()
+
+
+def test_ingest_principal_carries_the_canonical_slugs_of_its_own_binding(
+    store: PostgresCredentialStore,
+    insert_credential: Insert,
+    migrated_database: Database,
+    engine_for: EngineFor,
+) -> None:
+    migrator = engine_for(migrated_database.migrator_url)
+    first = store.find_active(digest(insert_credential(scope="ingest")))
+    second = store.find_active(digest(insert_credential(scope="ingest")))
+    assert first is not None and second is not None
+    for principal in (first, second):
+        assert principal.service_id is not None and principal.environment_id is not None
+        assert principal.service_slug == slug_of(migrator, "services", principal.service_id)
+        assert principal.environment_slug == slug_of(
+            migrator, "environments", principal.environment_id
+        )
+    # Each credential gets its own pair, and a service is never reported as an environment.
+    assert first.service_slug != second.service_slug
+    assert first.environment_slug != second.environment_slug
+    assert first.service_slug != first.environment_slug
+
+
+@pytest.mark.parametrize(
+    ("expires", "revoked"),
+    [
+        ("now() - interval '1 second'", "NULL"),
+        ("now()", "NULL"),
+        ("NULL", "now()"),
+        ("now() + interval '1 hour'", "now()"),
+    ],
+    ids=["expired", "expires-now", "revoked", "revoked-and-unexpired"],
+)
+def test_dead_ingest_credentials_are_not_found_and_leak_no_binding(
+    store: PostgresCredentialStore, insert_credential: Insert, expires: str, revoked: str
+) -> None:
+    token = insert_credential(scope="ingest", expires=expires, revoked=revoked)
+    assert store.find_active(digest(token)) is None
+
+
+def test_an_ingest_credential_with_an_expiry_in_the_future_is_found_with_its_binding(
+    store: PostgresCredentialStore, insert_credential: Insert
+) -> None:
+    token = insert_credential(scope="ingest", expires="now() + interval '1 hour'")
+    principal = store.find_active(digest(token))
+    assert principal is not None
+    assert principal.service_slug is not None and principal.environment_slug is not None
+
+
+@pytest.mark.parametrize("table", ["services", "environments"])
+def test_runtime_role_may_select_the_registry_tables_the_lookup_joins(
+    migrated_database: Database, engine_for: EngineFor, table: str
+) -> None:
+    runtime = engine_for(migrated_database.app_url)
+    with runtime.connect() as connection:
+        allowed = connection.execute(
+            text("SELECT has_table_privilege(current_user, :table, 'SELECT')"), {"table": table}
+        ).scalar_one()
+    assert allowed is True
+
+
+def test_lookup_stays_one_statement_and_returns_the_same_principal(
+    migrated_database: Database, insert_credential: Insert, engine_for: EngineFor
+) -> None:
+    engine = engine_for(migrated_database.app_url)
+    store = PostgresCredentialStore(engine)
+    secret_digest = digest(insert_credential(scope="ingest"))
+    first = store.find_active(secret_digest)  # Also records the first use, outside the count.
+    assert first is not None
+    statements: list[str] = []
+    event.listen(
+        engine,
+        "before_cursor_execute",
+        lambda connection, cursor, statement, parameters, context, many: statements.append(
+            statement
+        ),
+    )
+    assert store.find_active(secret_digest) == first
+    assert len(statements) == 1
+    assert statements[0].lstrip().upper().startswith("SELECT")
+    assert "JOIN" in statements[0].upper()
+
+
+def test_first_use_of_an_ingest_credential_is_still_recorded(
+    migrated_database: Database,
+    store: PostgresCredentialStore,
+    insert_credential: Insert,
+    engine_for: EngineFor,
+) -> None:
+    secret_digest = digest(insert_credential(scope="ingest"))
+    migrator = engine_for(migrated_database.migrator_url)
+    read_last_used = text("SELECT last_used_at FROM api_credentials WHERE secret_sha256 = :d")
+    with migrator.connect() as connection:
+        assert connection.execute(read_last_used, {"d": secret_digest}).scalar_one() is None
+    assert store.find_active(secret_digest) is not None
+    with migrator.connect() as connection:
+        assert connection.execute(read_last_used, {"d": secret_digest}).scalar_one() is not None
 
 
 def test_unknown_digest_is_not_found(store: PostgresCredentialStore) -> None:

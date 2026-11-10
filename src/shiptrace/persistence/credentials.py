@@ -26,12 +26,19 @@ _log = logging.getLogger(__name__)
 # Any revocation counts, whatever its timestamp; expiry is exclusive. `usage_stale` is decided by
 # the database clock in the same statement, so the common case costs no second round trip and no
 # write (ADR-0005: last_used_at changes at most once per 5 minutes per credential).
+#
+# The bound service and environment come back as ids and canonical slugs in the same statement.
+# The joins are LEFT because only an ingest credential is bound; for it both always match, since
+# the binding check requires both ids and the foreign keys restrict deletion (migration 0002).
 _FIND_ACTIVE = text(
-    "SELECT id, scope, service_id, environment_id, "
-    "(last_used_at IS NULL OR last_used_at < now() - interval '5 minutes') AS usage_stale "
-    "FROM api_credentials "
-    "WHERE secret_sha256 = :secret_digest AND revoked_at IS NULL "
-    "AND (expires_at IS NULL OR expires_at > now())"
+    "SELECT c.id, c.scope, c.service_id, c.environment_id, "
+    "s.slug AS service_slug, e.slug AS environment_slug, "
+    "(c.last_used_at IS NULL OR c.last_used_at < now() - interval '5 minutes') AS usage_stale "
+    "FROM api_credentials AS c "
+    "LEFT JOIN services AS s ON s.id = c.service_id "
+    "LEFT JOIN environments AS e ON e.id = c.environment_id "
+    "WHERE c.secret_sha256 = :secret_digest AND c.revoked_at IS NULL "
+    "AND (c.expires_at IS NULL OR c.expires_at > now())"
 )
 
 # Filtered, never unconditional (ADR-0012): under READ COMMITTED a concurrent toucher that commits
@@ -47,6 +54,37 @@ _TOUCH = text(
     "AND (expires_at IS NULL OR expires_at > now()) "
     "AND (last_used_at IS NULL OR last_used_at < now() - interval '5 minutes')"
 )
+
+
+def build_principal(
+    *,
+    credential_id: uuid.UUID,
+    scope: str,
+    service_id: uuid.UUID | None,
+    environment_id: uuid.UUID | None,
+    service_slug: str | None,
+    environment_slug: str | None,
+) -> Principal:
+    """The principal for one credential row, failing closed on an impossible binding.
+
+    The database already forbids it (the binding check and the foreign keys), so this is the last
+    line if a row ever disagrees: an ingest credential must have all four values, any other scope
+    none. The credential is then neither accepted nor reported as invalid; the store is treated as
+    unable to answer. The log line carries no id or slug."""
+    bound = (service_id, environment_id, service_slug, environment_slug)
+    is_ingest = Scope(scope) is Scope.INGEST
+    consistent = all(v is not None for v in bound) if is_ingest else all(v is None for v in bound)
+    if not consistent:
+        _log.error("credential binding is inconsistent")
+        raise StoreUnavailable
+    return Principal(
+        id=credential_id,
+        scope=Scope(scope),
+        service_id=service_id,
+        environment_id=environment_id,
+        service_slug=service_slug,
+        environment_slug=environment_slug,
+    )
 
 
 class PostgresCredentialStore:
@@ -67,11 +105,13 @@ class PostgresCredentialStore:
             raise StoreUnavailable from None
         if row is None:
             return None
-        return Principal(
-            id=row.id,
-            scope=Scope(row.scope),
+        return build_principal(
+            credential_id=row.id,
+            scope=row.scope,
             service_id=row.service_id,
             environment_id=row.environment_id,
+            service_slug=row.service_slug,
+            environment_slug=row.environment_slug,
         )
 
     @staticmethod

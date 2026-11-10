@@ -21,12 +21,18 @@ class StoreUnavailable(Exception):
 
 @dataclass(frozen=True)
 class Principal:
-    """Who is calling. Holds no secret material."""
+    """Who is calling. Holds no secret material.
+
+    An ingest credential is bound to one service and one environment: their ids, and the canonical
+    slugs the store read with them, so a request's names can be compared (R11) without being
+    resolved. Other scopes carry none of the four."""
 
     id: uuid.UUID
     scope: Scope
     service_id: uuid.UUID | None
     environment_id: uuid.UUID | None
+    service_slug: str | None = None
+    environment_slug: str | None = None
 
 
 class CredentialStore(Protocol):

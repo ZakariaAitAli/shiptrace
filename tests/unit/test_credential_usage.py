@@ -25,6 +25,8 @@ class Row:
         self.scope = "read"
         self.service_id = None
         self.environment_id = None
+        self.service_slug = None
+        self.environment_slug = None
         self.usage_stale = stale
 
 
