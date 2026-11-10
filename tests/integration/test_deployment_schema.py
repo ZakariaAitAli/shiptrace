@@ -987,6 +987,27 @@ def test_reasons_both_layers_refuse(app: Engine, reason: str) -> None:
     assert reason_state(app, reason) == CHECK_VIOLATION
 
 
+BIDI_CODE_POINTS = [*range(0x202A, 0x202F), *range(0x2066, 0x206A)]
+NEXT_TO_THE_BIDI_RANGES = [0x2029, 0x202F, 0x2065, 0x206A]
+
+
+@pytest.mark.parametrize("code_point", BIDI_CODE_POINTS, ids=lambda c: f"U+{c:04X}")
+def test_every_bidirectional_override_and_isolate_is_refused(app: Engine, code_point: int) -> None:
+    """The constraint's bracket expression is built with chr() in the migration source."""
+    reason = "a" + chr(code_point) + "b"
+    assert not is_valid_reason(reason)
+    assert reason_state(app, reason) == CHECK_VIOLATION
+
+
+@pytest.mark.parametrize("code_point", NEXT_TO_THE_BIDI_RANGES, ids=lambda c: f"U+{c:04X}")
+def test_the_characters_next_to_the_bidirectional_ranges_are_accepted(
+    app: Engine, code_point: int
+) -> None:
+    reason = "a" + chr(code_point) + "b"
+    assert is_valid_reason(reason)
+    assert reason_state(app, reason) is None
+
+
 def test_event_type_is_checked(app: Engine) -> None:
     with rolled_back(app) as connection:
         target = make_target(connection)
