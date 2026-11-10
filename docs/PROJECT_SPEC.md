@@ -179,7 +179,30 @@ Approved by the owner on 2026-11-08; enforced by the database (migration `0003`,
 - Expiry is counted in elapsed 24-hour days from the database's time at issuance, whatever the
   time zone or daylight-saving changes.
 
-The full request and response bodies are defined before the credential API is built.
+Issuance body, approved by the owner on 2026-11-10. `POST /credentials` takes these fields and
+nothing else; an unknown field is `422`:
+
+```json
+{
+  "name": "ci payments",
+  "scope": "ingest",
+  "service": "payments-api",
+  "environment": "production",
+  "expires_in_days": 90
+}
+```
+
+- `name` follows the credential name rule; names are not unique.
+- `scope` is `read` or `ingest`; any other value, `admin` included, is `422`.
+- An `ingest` credential requires both `service` and `environment`, as slugs of registered
+  entries; a `read` credential must not carry either. An unregistered slug is `422`
+  `validation_failed` naming that field, never its value.
+- `service`, `environment` and `expires_in_days` may be omitted or `null` where allowed.
+
+It answers `201` with `Cache-Control: no-store` and `{"id", "name", "scope", "service",
+"environment", "display_prefix", "created_at", "expires_at", "token"}`; an unbound or absent value
+is `null`. The database assigns `id`, `created_at` and `expires_at`. `token` appears in this
+response only: the service stores its SHA-256 digest and the metadata above, never the token.
 
 ### Errors
 
