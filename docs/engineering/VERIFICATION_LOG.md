@@ -527,3 +527,16 @@ Documentation only, run in this session on `0b6a049`. Committed as `45e50ac` (sp
 |---|---|---|
 | V171 | `python3 -I scripts/check_repo.py` after the spec and ADR edits, and again after the IPv4 correction | Passed both times (`repository checks: OK`) |
 | V172 | Scope and limits | The owner approved the final event field formats, the R1 to R11 precedence order and the acceptance of ADR-0003 (terminal types named) and ADR-0004 on 2026-11-10. No code, test or validator changed, and no test suite, Docker run or reviewer was run. `source_url` validation and the precedence order are specified but not yet implemented or tested |
+
+## P1 S3 CP11: event field validators
+
+Run in this session on `0b523b2`, with CP11 committed as `f8e8c0c`. Pure domain change in
+`domain/event_fields.py`; standard library only; no migration, route or dependency changed.
+
+| ID | Check | Outcome |
+|---|---|---|
+| V173 | Test-first implementation | `tests/unit/test_event_fields.py` was written first and failed at collection with `ModuleNotFoundError` for `shiptrace.domain.event_fields`. With the module added, all tests passed on the first run, so the evidence that they can fail is V174, not a red run on the logic |
+| V174 | Targeted mutants | 20 one-line mutants of the validators (digest case, length bounds, reason controls and bidi range, second `#`, IPv6 zone, IPv4 check, port bounds, encoded controls, malformed escapes, host length, scheme, URL length and character set, version pattern, `any` to `all`). 19 were caught. The survivor removes the explicit `@` (userinfo) check. It is redundant, since any `@` in the authority already fails the host, port or bracket checks, and the owner chose to keep the explicit check for clarity. No broader mutation run was made |
+| V175 | Owner decisions recorded as tests or kept | DEL (U+007F) rejected in `reason`; numeric-looking hosts must be valid IPv4 (`999.1.1.1`, `1.2.3`, `123` rejected); a port with leading zeros is accepted when its value is 1 to 65535 (`https://ci.example.com:0080/` added as a test); U+2028, U+2029, U+200E and U+200F stay allowed in `reason` |
+| V176 | `uv run --frozen pytest tests/unit/test_event_fields.py -q`, then `scripts/verify.sh --fast` | Passed: 301 tests in the new file; 841 unit tests in the fast gate; repository, history, hook, lockfile, format, lint, type and import-boundary gates (3 contracts kept) |
+| V177 | Limits | Docker-backed tests, security reviewers and the full `scripts/verify.sh` were intentionally omitted for a pure-domain checkpoint. The validators are not yet wired to any route or store, so no HTTP or database behavior is claimed. The allowance for U+2028, U+200E and U+200F is pinned by a test; U+2029 is not |
