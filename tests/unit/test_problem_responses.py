@@ -18,7 +18,7 @@ from shiptrace.application.access import Principal, StoreUnavailable
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Action, Scope, digest
 
-from .fakes import DictIssuer, DictRegistry
+from .fakes import DictCredentialAdmin, DictIssuer, DictRegistry
 
 PROBLEM_KEYS = {"type", "title", "status", "detail", "code"}
 # Written out here, not read from the code, so a changed or request-derived text fails a test.
@@ -62,6 +62,7 @@ def probe_app(store: DictStore) -> FastAPI:
         credentials=store,
         registry=DictRegistry(),
         issuer=DictIssuer(),
+        credential_admin=DictCredentialAdmin(),
     )
 
     def view() -> dict[str, str]:

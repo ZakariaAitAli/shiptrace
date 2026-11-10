@@ -13,7 +13,7 @@ from shiptrace.application.credentials import new_token
 from shiptrace.application.registry import InvalidPage, InvalidSlug, Kind
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictIssuer, DictRegistry, DictStore
+from .fakes import DictCredentialAdmin, DictIssuer, DictRegistry, DictStore
 
 PATHS = {Kind.SERVICES: "/api/v1/services", Kind.ENVIRONMENTS: "/api/v1/environments"}
 SENTINEL = "zz-" + uuid.uuid4().hex[:8]
@@ -46,6 +46,7 @@ def client(tokens: dict[Scope, str], registry: DictRegistry) -> TestClient:
         credentials=store,
         registry=registry,
         issuer=DictIssuer(),
+        credential_admin=DictCredentialAdmin(),
     )
     return TestClient(app, raise_server_exceptions=False)
 
@@ -274,6 +275,7 @@ def test_store_outage_is_503(tokens: dict[Scope, str]) -> None:
         credentials=store,
         registry=DictRegistry(broken=True),
         issuer=DictIssuer(),
+        credential_admin=DictCredentialAdmin(),
     )
     client = TestClient(app, raise_server_exceptions=False)
     headers = {"Authorization": f"Bearer {tokens[Scope.ADMIN]}"}

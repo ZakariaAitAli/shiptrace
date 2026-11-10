@@ -17,7 +17,7 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictIssuer, DictRegistry, DictStore
+from .fakes import DictCredentialAdmin, DictIssuer, DictRegistry, DictStore
 
 TOKENS = {scope: new_token() for scope in Scope}
 STORE = DictStore(
@@ -26,12 +26,15 @@ STORE = DictStore(
         for scope, token in TOKENS.items()
     }
 )
+CREDENTIALS = DictCredentialAdmin()
+KNOWN = CREDENTIALS.add_record()  # An allowed revoke reaches a real row, so 200, not 404.
 APP = build_api(
     readiness=lambda: True,
     docs_enabled=False,
     credentials=STORE,
     registry=DictRegistry(),
     issuer=DictIssuer(),
+    credential_admin=CREDENTIALS,
 )
 # Which scopes may call each protected route; anything absent here fails the completeness test.
 ALLOWED = {
@@ -40,11 +43,16 @@ ALLOWED = {
     ("GET", "/api/v1/environments"): {Scope.ADMIN, Scope.READ},
     ("POST", "/api/v1/environments"): {Scope.ADMIN},
     ("POST", "/api/v1/credentials"): {Scope.ADMIN},
+    ("GET", "/api/v1/credentials"): {Scope.ADMIN},
+    ("POST", "/api/v1/credentials/{credential_id}/revoke"): {Scope.ADMIN},
 }
 
 
 # A valid body where a route needs more than a slug, so an allowed scope reaches the use case.
-BODIES = {"/api/v1/credentials": {"name": "route auth", "scope": "read"}}
+BODIES = {
+    "/api/v1/credentials": {"name": "route auth", "scope": "read"},
+    "/api/v1/credentials/{credential_id}/revoke": None,  # Revocation takes no body.
+}
 PUBLIC = {("GET", "/healthz"), ("GET", "/readyz")}
 
 
@@ -76,11 +84,12 @@ def test_the_route_table_and_the_schema_agree() -> None:
 def call(method: str, path: str, authorization: str | None) -> int:
     headers = {} if authorization is None else {"Authorization": authorization}
     body = BODIES.get(path, {"slug": "route-auth"}) if method == "POST" else None
-    return CLIENT.request(method, path, headers=headers, json=body).status_code
+    url = path.replace("{credential_id}", str(KNOWN.id))
+    return CLIENT.request(method, url, headers=headers, json=body).status_code
 
 
 def test_every_route_is_in_the_scope_table() -> None:
-    assert len(ROUTES) >= 4
+    assert len(ROUTES) >= 7
     assert set(ROUTES) == set(ALLOWED)
 
 

@@ -15,6 +15,12 @@ EXPECTED = {
     (Scope.ADMIN, Action.ISSUE_CREDENTIAL): True,
     (Scope.READ, Action.ISSUE_CREDENTIAL): False,
     (Scope.INGEST, Action.ISSUE_CREDENTIAL): False,
+    (Scope.ADMIN, Action.LIST_CREDENTIALS): True,
+    (Scope.READ, Action.LIST_CREDENTIALS): False,
+    (Scope.INGEST, Action.LIST_CREDENTIALS): False,
+    (Scope.ADMIN, Action.REVOKE_CREDENTIAL): True,
+    (Scope.READ, Action.REVOKE_CREDENTIAL): False,
+    (Scope.INGEST, Action.REVOKE_CREDENTIAL): False,
 }
 
 

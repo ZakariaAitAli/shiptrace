@@ -11,6 +11,7 @@ from shiptrace.bootstrap.settings import Settings
 from shiptrace.persistence.credentials import PostgresCredentialStore
 from shiptrace.persistence.engine import build_engine
 from shiptrace.persistence.issuance import PostgresCredentialIssuer
+from shiptrace.persistence.lifecycle import PostgresCredentialAdmin
 from shiptrace.persistence.registry import PostgresRegistry
 from shiptrace.persistence.schema import PostgresSchemaProbe
 from shiptrace.persistence.schema import expected_schema as build_expected_schema
@@ -37,5 +38,6 @@ def create_app(
         credentials=PostgresCredentialStore(engine),
         registry=PostgresRegistry(engine),
         issuer=PostgresCredentialIssuer(engine),
+        credential_admin=PostgresCredentialAdmin(engine),
         lifespan=lifespan,
     )

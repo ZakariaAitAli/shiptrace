@@ -21,6 +21,8 @@ class Action(StrEnum):
     REGISTER = "register"
     VIEW_REGISTRY = "view_registry"
     ISSUE_CREDENTIAL = "issue_credential"
+    LIST_CREDENTIALS = "list_credentials"
+    REVOKE_CREDENTIAL = "revoke_credential"
 
 
 # Deny by default: an action is allowed only for the scopes listed here.
@@ -28,6 +30,8 @@ _ALLOWED: dict[Action, frozenset[Scope]] = {
     Action.REGISTER: frozenset({Scope.ADMIN}),
     Action.VIEW_REGISTRY: frozenset({Scope.ADMIN, Scope.READ}),
     Action.ISSUE_CREDENTIAL: frozenset({Scope.ADMIN}),
+    Action.LIST_CREDENTIALS: frozenset({Scope.ADMIN}),
+    Action.REVOKE_CREDENTIAL: frozenset({Scope.ADMIN}),
 }
 
 

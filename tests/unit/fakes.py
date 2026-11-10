@@ -1,16 +1,18 @@
 """In-memory stand-ins for the credential store, the issuer and the registry, for unit tests."""
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from shiptrace.application.access import Principal, StoreUnavailable
+from shiptrace.application.credential_admin import CredentialRecord
 from shiptrace.application.credentials import (
     NewCredential,
     StoredCredential,
     UnregisteredBinding,
 )
 from shiptrace.application.registry import Kind, RegistryEntry
+from shiptrace.domain.credentials import Scope
 
 FIXED_TIME = datetime(2026, 11, 8, tzinfo=UTC)
 
@@ -78,3 +80,43 @@ class DictIssuer:
         days = credential.expires_in_days
         expires = None if days is None else FIXED_TIME + timedelta(days=days)
         return StoredCredential(id=self.ids[-1], created_at=FIXED_TIME, expires_at=expires)
+
+
+@dataclass
+class DictCredentialAdmin:
+    rows: dict[uuid.UUID, CredentialRecord] = field(default_factory=dict)
+    broken: bool = False
+    writes: int = 0  # Revocations that changed a row; a repeat must not add to it.
+
+    def add_record(self, **overrides: object) -> CredentialRecord:
+        values: dict[str, object] = {
+            "id": uuid.uuid4(),
+            "name": "reader",
+            "scope": Scope.READ,
+            "service": None,
+            "environment": None,
+            "display_prefix": "st1_AbCd",
+            "created_at": FIXED_TIME,
+            "expires_at": None,
+            "revoked_at": None,
+            "last_used_at": None,
+        } | overrides
+        record = CredentialRecord(**values)  # type: ignore[arg-type]
+        self.rows[record.id] = record
+        return record
+
+    def list_after(self, after: uuid.UUID | None, limit: int) -> list[CredentialRecord]:
+        if self.broken:
+            raise StoreUnavailable
+        ids = sorted(i for i in self.rows if after is None or i > after)
+        return [self.rows[i] for i in ids[:limit]]
+
+    def revoke(self, credential_id: uuid.UUID) -> CredentialRecord | None:
+        if self.broken:
+            raise StoreUnavailable
+        record = self.rows.get(credential_id)
+        if record is not None and record.revoked_at is None:
+            record = replace(record, revoked_at=FIXED_TIME + timedelta(minutes=1))
+            self.rows[credential_id] = record
+            self.writes += 1
+        return record

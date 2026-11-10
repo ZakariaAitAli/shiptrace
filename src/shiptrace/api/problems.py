@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException
 from starlette.routing import Match
 
 from shiptrace.application.access import Forbidden, StoreUnavailable, Unauthenticated
+from shiptrace.application.credential_admin import CredentialNotFound
 from shiptrace.application.credentials import IssuanceRejected
 from shiptrace.application.registry import AlreadyExists, InvalidPage, InvalidSlug
 
@@ -126,6 +127,10 @@ def install_problem_handlers(app: FastAPI) -> None:
         errors = [{"location": f"body.{p.field}", "rule": p.rule} for p in error.problems]
         return problem("validation_failed", errors=errors)
 
+    async def not_found(_: Request, __: Exception) -> JSONResponse:
+        return problem("not_found")
+
+    app.add_exception_handler(CredentialNotFound, not_found)
     app.add_exception_handler(AlreadyExists, already_exists)
     app.add_exception_handler(IssuanceRejected, issuance_rejected)
     app.add_exception_handler(InvalidSlug, invalid_slug)
