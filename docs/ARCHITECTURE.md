@@ -87,6 +87,13 @@ indexes below are added in P2, once they can be measured. `seq` and `received_at
 a row is inserted, not when it commits, so neither is a commit order: a transaction can commit
 after one that inserted later.
 
+`deployment_events.credential_id` records which credential reported an event. The database does not
+check that this credential is bound to the deployment's service and environment: that binding (R11)
+is enforced by the application before any write, so attribution rests on the application trust
+boundary and not on a database cross-binding constraint. A holder of the runtime database
+credential could insert an event attributed to any credential, so that credential is as sensitive
+as the application itself.
+
 Indexes follow the read paths: `deployments (service_id, environment_id, id DESC)`,
 `(environment_id, id DESC)` and `(service_id, id DESC)` for history, and `deployment_events
 (received_at)` for metrics. "Latest" joins a pair's deployments to their `succeeded` events,
@@ -116,8 +123,16 @@ from local PostgreSQL. Migrations only grant to roles that already exist.
    `shiptrace_migrator` is used only by migrations.
 2. **Trigger**: `BEFORE UPDATE OR DELETE` row triggers and a `BEFORE TRUNCATE` statement
    trigger raise an exception, which also stops an owner-role mistake. The functions run with the
-   caller's rights, pin `search_path` and raise fixed messages that carry no value. The owner can
-   still disable a trigger with `ALTER TABLE`; that is a residual risk, not a claim.
+   caller's rights, pin `search_path` and raise fixed messages that carry no value.
+
+The triggers do not stop everyone. The owner role can disable or drop a trigger (`ALTER TABLE
+... DISABLE TRIGGER`, `DROP TRIGGER`), replace a trigger function, change a column's type or drop a
+table, and a superuser can set `session_replication_role = replica`, which skips ordinary
+triggers. These are recorded as residual risks, not mitigated ones. What limits them is that the
+migrator is the only owner, its credentials are used by migrations alone, and the runtime role is
+neither an owner nor a superuser. Tests refuse its attempts to update, delete, truncate, alter or
+drop the tables and to disable or drop the triggers; they do not yet test that it cannot replace the
+trigger functions or set `session_replication_role`.
 
 Two more guards sit in the same migration. A `BEFORE INSERT` trigger refuses `reverted` unless the
 same deployment already holds a `succeeded` event: defense in depth for R9 and R10, since a bad
@@ -178,6 +193,12 @@ its default is 10 s.
   several tasks would race. Schema changes follow expand/contract so the previous version keeps
   working during a rolling deploy. Rollback past a contract migration is not supported: see
   ADR-0011.
+- A new table is empty, but its foreign keys still lock the tables they reference (SHARE ROW
+  EXCLUSIVE, as for adding any foreign key), which can wait behind, and hold up, the previous
+  release's writes to them. Each migration runs in its own transaction with a 5 second
+  `lock_timeout` (`env.py`), so the wait is bounded and a timeout fails the migration cleanly. The
+  docstring of migration `0004` says its tables need no `lock_timeout` and does not mention the
+  referenced tables; it is committed and immutable, so this paragraph is the correction.
 - `/healthz` never touches dependencies; restarting the app does not repair a database.
 
 ## 6. Security architecture

@@ -1,4 +1,7 @@
-"""The revision chain of this build: each revision has one parent, and 0004 is expand-only."""
+"""The revision chain of this build: each revision has one parent, and the head is 0004.
+
+It pins the chain and the known revisions only. It is not evidence that 0004 is expand-only or
+compatible with the previous release; that rests on the migration's contents and its review."""
 
 from alembic.script import ScriptDirectory
 
