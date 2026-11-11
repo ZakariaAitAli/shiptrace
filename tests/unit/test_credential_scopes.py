@@ -25,6 +25,10 @@ EXPECTED = {
     (Scope.ADMIN, Action.INGEST_EVENT): False,
     (Scope.READ, Action.INGEST_EVENT): False,
     (Scope.INGEST, Action.INGEST_EVENT): True,
+    # Spec §1 and §5: deployment history is for read and admin credentials; ingest only records.
+    (Scope.ADMIN, Action.VIEW_DEPLOYMENTS): True,
+    (Scope.READ, Action.VIEW_DEPLOYMENTS): True,
+    (Scope.INGEST, Action.VIEW_DEPLOYMENTS): False,
 }
 
 
