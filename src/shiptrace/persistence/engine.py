@@ -27,8 +27,13 @@ def build_engine(url: str, options: DatabaseOptions) -> Engine:
         f"-c lock_timeout={options.lock_timeout_ms} "
         f"-c idle_in_transaction_session_timeout={IDLE_IN_TRANSACTION_TIMEOUT_MS}"
     )
+    # hide_parameters keeps bound values out of SQLAlchemy's SQL log lines and out of the text of
+    # the errors it raises (the statement text and the driver's own message are unaffected).
+    # Defense in depth only: the stores already drop the error and classify by SQLSTATE, and
+    # PostgreSQL may still echo a value in its own message.
     return create_engine(
         url,
+        hide_parameters=True,
         pool_size=options.pool_size,
         max_overflow=options.max_overflow,
         pool_timeout=options.pool_timeout_seconds,
