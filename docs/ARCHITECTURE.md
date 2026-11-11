@@ -38,8 +38,8 @@ bootstrap wires everything, including logging and telemetry setup
 | Layer | Holds | Must not import |
 |---|---|---|
 | `domain` | Event types, status derivation, ingestion decisions, metric formulas. Pure and clock-free. | Everything except stdlib |
-| `application` | Use cases, transaction boundaries, ports (`typing.Protocol`), scope checks | FastAPI, SQLAlchemy, `api`, `persistence` |
-| `persistence` | SQLAlchemy models, repositories, session handling | `api`, FastAPI |
+| `application` | Use-case orchestration, authorization (scope and binding) and domain decisions, and ports (`typing.Protocol`). It holds no database transaction: a port method is one atomic operation, and the adapter behind it makes it so | FastAPI, SQLAlchemy, `api`, `persistence` |
+| `persistence` | SQLAlchemy models, repositories, session handling. Each store owns the atomic PostgreSQL transaction behind its port method, and commits only what the use case's decision allows (for ingestion, an accepted event) | `api`, FastAPI |
 | `api` | Routers, Pydantic schemas, auth dependency, middleware, dashboard, error mapping | `persistence` |
 | `bootstrap` | Settings, app factory, lifespan, CLI | Is imported only by entry points |
 
@@ -152,21 +152,30 @@ the spec is missed with measured data, a rebuildable projection is the fallback,
 
 **Ingest** (`POST /deployment-events`), in one `READ COMMITTED` transaction:
 
-1. Middleware assigns the correlation ID and enforces the body limit.
-2. Check the per-IP failed-auth limit, then hash the bearer token and look up an active
-   credential. Check scope; apply the credential's rate limit.
-3. Validate the body. Compare its service and environment slugs to the credential's binding
-   *before* resolving them, so the response cannot reveal whether a target exists (R11).
-4. For `reverted`: read the deployment; if absent, reject (R9). Never create one. For other types:
-   `INSERT ... ON CONFLICT DO NOTHING` the deployment, then read it in a separate statement.
-5. Compare immutable attributes (R5); check the `reverted` preconditions (R9, R10).
+1. *(P3, not built.)* Middleware assigns the correlation ID and enforces the body limit. Today
+   nothing limits the body: the route reads and parses all of it, but only after step 2.
+2. Hash the bearer token and look up an active credential, then check scope. *(P3, not built:)*
+   the per-IP failed-auth limit and the credential's rate limit. Authentication and the scope check
+   run before the body is read.
+3. Validate the body, then compare its service and environment slugs to the credential's binding
+   *before* resolving them, so the response cannot reveal whether a target exists (R11). Format
+   errors are `422` and say nothing about registration. The submitted slugs are never resolved:
+   the target is the principal's own service and environment ids.
+4. Read the deployment and its events in one statement. If it is absent and the type is
+   `reverted`, reject (R9) and create nothing. If it is absent otherwise,
+   `INSERT ... ON CONFLICT DO NOTHING` the deployment; if that lost a race, read again in a
+   separate statement, which sees the winner.
+5. Compare immutable attributes (R5); check the `reverted` preconditions (R9, R10). The domain's
+   `decide` does this.
 6. `INSERT ... ON CONFLICT DO NOTHING` the event, with **no conflict target**, so that both unique
    indexes act as arbiters. Naming one would turn the other into a `unique_violation`.
 7. If no row was inserted, read the events in a **separate statement**, which takes a new snapshot
    and so sees the winner, and classify as duplicate or conflict.
 
-Every rejection rolls back. If the wait for a concurrent writer exceeds `lock_timeout`, the
-response is a retryable `503` with `Retry-After`.
+Each store call is one transaction, and the adapter commits only when an event was written. Every
+other outcome rolls back, including a deployment created for an event that was then refused. If the
+wait for a concurrent writer exceeds `lock_timeout`, the response is a retryable `503` with
+`Retry-After`.
 
 **Concurrency uses constraints, not locks.** `ON CONFLICT` makes a second writer wait for the
 first to commit, so the two unique indexes decide every race. `SELECT ... FOR UPDATE` was
@@ -174,7 +183,8 @@ rejected because PostgreSQL requires `UPDATE` privilege for it, and the runtime 
 have that privilege on these tables. R9 is safe without a lock: `reverted` is accepted only
 after `succeeded` is visible, and committed events never change.
 
-**Shutdown.** ECS deregisters a task from the load balancer (`DEACTIVATING`) *before* sending
+**Shutdown** *(design for P3 and P4: today the lifespan only disposes the pool, and no Uvicorn flags,
+telemetry flush or container exist)*. ECS deregisters a task from the load balancer (`DEACTIVATING`) *before* sending
 `SIGTERM` (`STOPPING`), then sends `SIGKILL` after `stopTimeout` (default 30 s, maximum 120 s).
 Uvicorn runs with `--timeout-graceful-shutdown 20`, because its default of `None` waits
 indefinitely. The FastAPI lifespan shutdown then disposes the pool and flushes telemetry, capped at 3 s so an
@@ -208,13 +218,18 @@ Full analysis: [security/THREAT_MODEL.md](security/THREAT_MODEL.md) and
 
 - Credentials: 256-bit random opaque tokens prefixed `st1_`; only the SHA-256 digest is stored.
 - Authorization: deny by default, in an application-layer use-case check, not only in routing.
-- Dashboard: named accounts separate from API tokens, Argon2id, server-side sessions, `__Host-` cookie, `SameSite=Strict`, Origin check on POST,
-  strict CSP with no inline script.
-- Client IP comes from `X-Forwarded-For` only when the peer is a configured trusted proxy.
+- Dashboard *(planned, P2)*: named accounts separate from API tokens, Argon2id, server-side
+  sessions, `__Host-` cookie, `SameSite=Strict`, Origin check on POST, strict CSP with no inline
+  script.
+- Client IP *(planned, P3; nothing reads `X-Forwarded-For` today)* comes from `X-Forwarded-For`
+  only when the peer is a configured trusted proxy.
 - `/readyz` reveals status only, and caches its result for 1 s so unauthenticated calls cannot
   drive database load.
 
 ## 7. Observability
+
+*Planned for P3. Today `src` has five fixed-text log lines and no structured logging, traces,
+metrics, correlation ID or log allowlist; the table is the design.*
 
 | Signal | Mechanism | Rule |
 |---|---|---|

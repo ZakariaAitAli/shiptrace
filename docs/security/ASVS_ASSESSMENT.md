@@ -97,3 +97,26 @@ yet. Evidence IDs are in [VERIFICATION_LOG.md](../engineering/VERIFICATION_LOG.m
 | 16.3.1–16.3.4 | None for credential lifecycle | Logging of issuance and revocation (T30); AC18 |
 | 16.5.1–16.5.3 | Authentication lookup failure answers `503` rather than allowing access; a failed usage write never changes the response (V160) | Review of all routes at the final assessment |
 | AC11 | Digest-only storage and revocation on the next request, with no cache (V156) | None known for S2 |
+
+## S4 to S6 evidence index (ingestion, P1 security gate)
+
+Added at the P1 security gate, after the S3 to S6 reviews (V257 to V265). Like the S2 index it
+**changes no status**: every row stays `Planned`, because a row passes only in the final
+assessment (P6), against its full requirement text. Where a control is not built, the row says so
+and names the phase that builds it. It supersedes the S2 index only where it says "ingestion".
+
+| Rows | What S4 to S6 evidence exists | What is still missing before `Pass` |
+|---|---|---|
+| 1.2.4 | The event store uses bound parameters and fixed statement text. A unit test checks its SQL for `UPDATE`, `DELETE`, `FOR UPDATE`, literals and a conflict target (V216, V219). Ruff `S` rules run in `verify.sh` (V247) | The Ruff `S608` result recorded for the whole code base |
+| 2.1.1–2.1.3 | Field rules are documented (spec §3, §5) and enforced in the use case (V227, V228) | **No request body size limit (AC8, P3).** The documented 16 KiB limit does not exist |
+| 2.2.1–2.2.3 | Server-side validation in `ingest_event` before the store: every problem at once, no coercion, no unknown field, no client timestamp (V228). Ingestion validates by hand and not with Pydantic, because the body is read after authentication (V245) | Final assessment; the plan wording "Pydantic" does not describe ingestion |
+| 2.3.1, 2.3.3 | Status is derived from events. One store call is one transaction that commits only an accepted event and rolls back otherwise, including a deployment created for a refused first event (V216, V222). AC2: 50 concurrent identical submissions give one `201` and 49 `200` (V251). AC4: every valid order converges with R9 retried, and competing terminals follow the first committed (V252) | Final assessment |
+| 2.4.1 | **None.** No rate limit exists (AC9, P3) | AC9 |
+| 4.1.1 | Responses are `application/json` or `application/problem+json` (V243, V247) | Contract tests (P2) and the committed OpenAPI schema, which does not describe this route's request body (V260) |
+| 8.1.1, 8.2.1, 8.2.2, 8.3.1 | Ingest scope only, then the principal's binding, then R11, before any store call; the target and credential id come from the principal (V227, V228, V235, V247, V251). Expired and revoked tokens, and a token revoked after use, on this route: V261 (tests written, awaiting the owner's run) | Final assessment |
+| 13.2.2, 13.2.3 | Migration 0004 grants, the trigger functions' ownership, privileges and `search_path`, and the runtime role's lack of `CREATE`, `TEMP` and `TRIGGER` (V203, V221, V239) | Production role setup (P7); T32 |
+| 15.3.1, 15.3.3 | Unknown fields are refused (`unknown_field`); the client supplies no timestamp (V228) | Body limit (AC8) |
+| 15.1.3, 15.2.2 | Statement, lock and connect timeouts and a bounded pool exist (ARCHITECTURE §5) | **No body limit and no rate limit** (AC8, AC9) |
+| 16.2.1–16.2.5, 16.3.1–16.3.4, 16.4.1 | `src` has five fixed-text log lines. Nothing logs a rejection, an authentication failure or a credential lifecycle action. Secret-sentinel checks exist at the application level; the engine hides bind parameters (V261) | **Structured logging and a real-process sentinel (AC10, AC18, P3);** T30 |
+| 16.5.1–16.5.3 | Problem documents have fixed text and no value (V243). Store faults are sanitized and non-retryable, with no cause or context (V219) | Review of all routes at the final assessment |
+| 6.3.1 | **None for ingestion.** Failed-authentication limits do not exist; any well-formed token costs a database lookup (T10) | AC9 |
