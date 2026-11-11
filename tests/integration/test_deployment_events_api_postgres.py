@@ -8,11 +8,17 @@ must not reach the store is shown not to.
 """
 
 import logging
+import threading
+import time
 import uuid
-from collections.abc import Iterator
+from collections import Counter
+from collections.abc import Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from itertools import permutations
 from typing import Any
 
+import anyio.to_thread
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -24,7 +30,7 @@ from shiptrace.application.deployments import DeploymentStore, DeploymentTarget,
 from shiptrace.bootstrap.app import create_app
 from shiptrace.bootstrap.settings import Settings
 from shiptrace.domain.credentials import digest, display_prefix
-from shiptrace.domain.deployments import NewEvent
+from shiptrace.domain.deployments import TERMINAL, EventType, NewEvent, Status, derive_status
 from shiptrace.persistence.credentials import PostgresAdminCredentialWriter
 
 from .conftest import Database, start_database
@@ -371,3 +377,281 @@ def test_a_database_fault_is_a_sanitized_500_with_no_sql_or_input_in_it(
     assert str(spy.credential) not in caplog.text
     assert "INSERT INTO" not in caplog.text
     assert counts(admin) == before  # The new deployment was rolled back with the failed event.
+
+
+# P1 S6, AC2: 50 concurrent identical submissions through HTTP and PostgreSQL
+
+CONCURRENCY = 50
+DEADLINE = 60.0  # Seconds for any wait on another thread or on PostgreSQL.
+
+
+async def _raise_thread_limit() -> None:
+    """Starlette runs a sync route in a 40-thread pool, so 50 requests could not overlap. Production
+    keeps that limit and sheds load with a 503 by design (ARCHITECTURE §5); AC2 measures
+    idempotency, so this test lifts the limit, as the spec has it lift the rate limits."""
+    anyio.to_thread.current_default_thread_limiter().total_tokens = 4 * CONCURRENCY
+
+
+@pytest.fixture(scope="module")
+def wide_api(disposable: Database) -> Iterator[Api]:
+    """The real composition root, with a pool and timeouts that cannot shed or expire 50 callers."""
+    settings = Settings.model_validate(
+        {
+            "environment": "test",
+            "database_url": disposable.app_url,
+            "db_pool_size": CONCURRENCY,
+            "db_max_overflow": 10,
+            "db_pool_timeout_seconds": 30,
+            "db_statement_timeout_ms": 50_000,
+            "db_lock_timeout_ms": 40_000,
+        }
+    )
+    app = create_app(settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        assert client.portal is not None
+        client.portal.call(_raise_thread_limit)
+        yield Api(app, client)
+
+
+@pytest.fixture(scope="module")
+def runtime(disposable: Database) -> Iterator[Engine]:
+    engine = create_engine(disposable.app_url)
+    yield engine
+    engine.dispose()
+
+
+def wait_until_blocked(admin: Engine, expected: int) -> int:
+    """Returns once PostgreSQL itself reports exactly `expected` runtime-role deployment inserts
+    waiting on a lock. A poll of an observable condition, bounded by DEADLINE; never a sleep that
+    stands in for synchronization."""
+    end = time.monotonic() + DEADLINE
+    gate = threading.Event()
+    blocked = 0
+    while time.monotonic() < end:
+        with admin.connect() as connection:
+            blocked = int(
+                connection.execute(
+                    text(
+                        "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                        "AND usename = 'shiptrace_app' AND state = 'active' "
+                        "AND wait_event_type = 'Lock' AND query LIKE 'INSERT INTO deployments%'"
+                    )
+                ).scalar_one()
+            )
+        if blocked == expected:
+            return blocked
+        gate.wait(0.01)
+    raise AssertionError(f"{blocked} of {expected} requests were blocked inside PostgreSQL")
+
+
+def stored_event_ids(admin: Engine, world: World, key: str) -> list[uuid.UUID]:
+    with admin.connect() as connection:
+        return list(
+            connection.execute(
+                text(
+                    "SELECT e.id FROM deployment_events e JOIN deployments d "
+                    "ON d.id = e.deployment_id WHERE d.service_id = :s AND d.environment_id = :e "
+                    "AND d.deployment_key = :k ORDER BY e.seq"
+                ),
+                {"s": world.service_id, "e": world.environment_id, "k": key},
+            ).scalars()
+        )
+
+
+def test_ac2_fifty_concurrent_identical_submissions_write_exactly_one_event(
+    wide_api: Api, world: World, admin: Engine, runtime: Engine
+) -> None:
+    """The overlap is forced and observed, not hoped for. A separate transaction holds an
+    uncommitted deployment on the very identity the requests use, so every request blocks inside
+    PostgreSQL on its first write. The test waits until PostgreSQL reports all 50 blocked, then
+    rolls the holder back: the 50 then race for the freed identity, one wins, and the other 49 wait
+    on the winner's commit and read it."""
+    key = "ac2-" + uuid.uuid4().hex[:8]
+    payload = event(world, deployment_key=key, type="succeeded", reason="ok")
+    headers = bearer(world.ingest)
+    with runtime.connect() as holder, ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+        transaction = holder.begin()
+        try:
+            holder.execute(
+                text(
+                    "INSERT INTO deployments "
+                    "(service_id, environment_id, deployment_key, version, commit_sha) "
+                    "VALUES (:s, :e, :k, :v, :sha)"
+                ),
+                {
+                    "s": world.service_id,
+                    "e": world.environment_id,
+                    "k": key,
+                    "v": payload["version"],
+                    "sha": SHA,
+                },
+            )
+            futures = [
+                pool.submit(wide_api.client.post, PATH, json=payload, headers=headers)
+                for _ in range(CONCURRENCY)
+            ]
+            assert wait_until_blocked(admin, CONCURRENCY) == CONCURRENCY
+            assert not any(future.done() for future in futures), "a request finished unblocked"
+        finally:
+            transaction.rollback()  # Frees the identity; also the cleanup if the wait failed.
+        responses = [future.result(timeout=DEADLINE) for future in futures]
+
+    assert Counter(r.status_code for r in responses) == {201: 1, 200: CONCURRENCY - 1}
+    assert {r.headers["content-type"] for r in responses} == {"application/json"}
+    committed = stored_event_ids(admin, world, key)
+    assert len(committed) == 1  # Exactly one event is committed.
+    assert {r.json()["id"] for r in responses} == {str(committed[0])}  # All name the original.
+    created = [r for r in responses if r.status_code == 201]
+    assert created[0].json() == {"id": str(committed[0]), "type": "succeeded", "duplicate": False}
+    assert all(r.json()["duplicate"] is True for r in responses if r.status_code == 200)
+    with admin.connect() as connection:
+        deployments = connection.execute(
+            text("SELECT count(*) FROM deployments WHERE deployment_key = :k"), {"k": key}
+        ).scalar_one()
+    assert deployments == 1
+
+
+# P1 S6, AC4: permutations of an event set through HTTP and PostgreSQL
+
+ST, S, F, C, R = (
+    EventType.STARTED,
+    EventType.SUCCEEDED,
+    EventType.FAILED,
+    EventType.CANCELLED,
+    EventType.REVERTED,
+)
+# The valid event sets of spec §3, as in tests/unit/test_deployment_histories.py.
+VALID_SETS: list[tuple[EventType, ...]] = [
+    (ST,),
+    (S,),
+    (F,),
+    (C,),
+    (ST, S),
+    (ST, F),
+    (ST, C),
+    (S, R),
+    (ST, S, R),
+]
+RETRYABLE = (409, "revert_requires_success")
+Outcomes = dict[EventType, list[tuple[int, str | None]]]
+
+
+def send(api: Api, world: World, key: str, kind: EventType) -> tuple[int, str | None]:
+    response = api.client.post(
+        PATH,
+        json=event(world, deployment_key=key, type=kind.value),
+        headers=bearer(world.ingest),
+    )
+    return response.status_code, response.json()["code"] if response.status_code >= 400 else None
+
+
+def deliver(api: Api, world: World, order: Sequence[EventType]) -> tuple[str, Outcomes, list[Any]]:
+    """Sends each event once, in order, then retries R9 rejections until nothing changes."""
+    key = "ac4-" + uuid.uuid4().hex[:10]
+    log: Outcomes = {}
+    pending: list[EventType] = []
+    for kind in order:
+        outcome = send(api, world, key, kind)
+        log.setdefault(kind, []).append(outcome)
+        if outcome == RETRYABLE:
+            pending.append(kind)
+    progress = True
+    while pending and progress:
+        progress = False
+        for kind in list(pending):
+            outcome = send(api, world, key, kind)
+            log[kind].append(outcome)
+            if outcome != RETRYABLE:
+                pending.remove(kind)
+                progress = True
+    return key, log, pending
+
+
+def stored_types(admin: Engine, world: World, key: str) -> list[EventType]:
+    with admin.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT e.type FROM deployment_events e JOIN deployments d "
+                "ON d.id = e.deployment_id WHERE d.service_id = :s AND d.environment_id = :e "
+                "AND d.deployment_key = :k ORDER BY e.seq"
+            ),
+            {"s": world.service_id, "e": world.environment_id, "k": key},
+        ).scalars()
+        return [EventType(value) for value in rows]
+
+
+def deployments_without_events(admin: Engine, world: World) -> int:
+    with admin.connect() as connection:
+        return int(
+            connection.execute(
+                text(
+                    "SELECT count(*) FROM deployments d WHERE d.service_id = :s "
+                    "AND d.environment_id = :e AND NOT EXISTS "
+                    "(SELECT 1 FROM deployment_events x WHERE x.deployment_id = d.id)"
+                ),
+                {"s": world.service_id, "e": world.environment_id},
+            ).scalar_one()
+        )
+
+
+def first_terminal(order: Sequence[EventType]) -> EventType:
+    return next(kind for kind in order if kind in TERMINAL)
+
+
+@pytest.mark.parametrize("valid_set", VALID_SETS, ids=lambda s: "+".join(k.value for k in s))
+def test_ac4_every_order_of_a_valid_set_converges_with_every_event_stored_once(
+    api: Api, world: World, admin: Engine, valid_set: tuple[EventType, ...]
+) -> None:
+    expected = derive_status(valid_set)
+    for order in permutations(valid_set):
+        key, log, pending = deliver(api, world, order)
+        stored = stored_types(admin, world, key)
+        assert pending == [], order
+        assert sorted(stored) == sorted(valid_set), order
+        assert derive_status(stored) is expected, order
+        for kind in valid_set:
+            # One 201 per type, and anything before it only the retryable R9 refusal.
+            assert [o for o in log[kind] if o[0] == 201] == [(201, None)], (order, kind)
+            assert [o for o in log[kind] if o[0] != 201] == [RETRYABLE] * (len(log[kind]) - 1)
+    assert deployments_without_events(admin, world) == 0
+
+
+# Two 24-order sets, not the 120 orders of the in-memory test. `started` cannot change a terminal or
+# a revert outcome (R7; decide never consults it for them), and the in-memory test already covers
+# every order with it, so the first set checks it beside the terminals and the second checks R.
+COMPETING_SETS = [(ST, S, F, C), (S, F, C, R)]
+
+
+@pytest.mark.parametrize("events", COMPETING_SETS, ids=lambda s: "+".join(k.value for k in s))
+def test_ac4_competing_terminals_follow_first_committed_and_do_not_converge(
+    api: Api, world: World, admin: Engine, events: tuple[EventType, ...]
+) -> None:
+    """Competing terminals legitimately differ by arrival order (R6), and a revert follows the
+    first terminal: accepted after `succeeded` (R9 retried), refused for good after `failed` or
+    `cancelled` (R10). The oracle names the winner from the order, as the in-memory test does."""
+    finals: set[Status] = set()
+    for order in permutations(events):
+        winner = first_terminal(order)
+        key, log, pending = deliver(api, world, order)
+        stored = stored_types(admin, world, key)
+        assert pending == [], order
+        assert [t for t in stored if t in TERMINAL] == [winner], order
+        for loser in TERMINAL - {winner}:
+            assert log[loser] == [(409, "terminal_conflict")], (order, loser)
+        if ST in order:
+            assert log[ST] == [(201, None)], order
+        if R in order:
+            if winner is S:
+                assert derive_status(stored) is Status.REVERTED, order
+                assert log[R][-1] == (201, None), order
+            else:
+                assert R not in stored, order
+                assert derive_status(stored) is Status(winner.value), order
+                assert log[R][-1] == (409, "revert_not_applicable"), order
+        else:
+            assert derive_status(stored) is Status(winner.value), order
+        finals.add(derive_status(stored))
+    # Arrival order alone yields all three outcomes; with a revert, a success ends as `reverted`.
+    won = Status.REVERTED if R in events else Status.SUCCEEDED
+    assert finals == {won, Status.FAILED, Status.CANCELLED}
+    assert deployments_without_events(admin, world) == 0
