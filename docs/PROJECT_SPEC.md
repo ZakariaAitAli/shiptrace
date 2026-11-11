@@ -76,7 +76,8 @@ A deployment holds at most one event of each type and at most one of
 
 **Precedence.** When more than one row could apply, the first step below that applies decides:
 
-1. R11, from the credential and the body's slugs alone, before anything is looked up.
+1. R11, from the credential and the body's slugs alone, before anything is looked up. Field-format
+   validation (`422`) runs before it: it needs no lookup and reveals nothing about what is registered.
 2. The deployment does not exist: R9 for `reverted`, otherwise R1.
 3. R5: a `version` or `commit_sha` that differs from the deployment's, even for a replay.
 4. A `reverted` event is already stored: R3 or R4. Otherwise a new `reverted` is R9 when the
