@@ -11,7 +11,8 @@ The order is part of the contract, and each step refuses before the next one run
    never resolved, so the answer cannot depend on what is registered.
 
 The store's outcome, and its `StoreUnavailable` or `InvariantFault`, pass through unchanged.
-Nothing here logs: a body, a reason or a URL never reaches a log line from this module.
+The only log line is fixed text for an unbound principal: a body, a reason or a URL never reaches
+a log line from this module.
 """
 
 import logging
@@ -91,6 +92,8 @@ def ingest_event(
     principal: Principal, body: Mapping[str, object], store: DeploymentStore
 ) -> Outcome:
     authorize(principal, Action.INGEST_EVENT)
+    # build_principal already refuses an inconsistent binding. This repeats the check because a
+    # test double can build a malformed Principal, and it narrows the four values for mypy.
     service_id, environment_id = principal.service_id, principal.environment_id
     bound_service, bound_environment = principal.service_slug, principal.environment_slug
     if (

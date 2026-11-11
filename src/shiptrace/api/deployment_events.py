@@ -11,7 +11,8 @@ here protect that order from the framework:
 - A rejection is a return value of the use case, mapped here to its problem document. A conflict
   rolled back in the store; nothing about the request is echoed.
 
-The success body names the event and says whether it was a replay. It carries no request value.
+The success body names the event and says whether it was a replay. Its only request-derived value
+is the event type, already validated against the closed set of types; it echoes nothing else.
 """
 
 import uuid
