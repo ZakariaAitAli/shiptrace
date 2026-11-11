@@ -407,6 +407,69 @@ def test_trigger_functions_run_with_caller_rights_and_a_pinned_search_path(admin
         assert owner == "shiptrace_migrator", name
 
 
+@pytest.mark.parametrize("name", FUNCTIONS)
+def test_trigger_functions_are_executable_by_their_owner_only(admin: Engine, name: str) -> None:
+    """Read from the catalogs of the migrated database, not assumed. The signature is the exact one
+    in migration 0004 (no arguments, returns trigger), so a missing, renamed or overloaded function
+    fails here instead of passing vacuously. Why it holds: bootstrap_roles.sql revokes the default
+    EXECUTE from PUBLIC for functions the migrator creates, and 0004 grants none."""
+    with admin.connect() as connection:
+        overloads = connection.execute(
+            text("SELECT count(*) FROM pg_proc WHERE proname = :name"), {"name": name}
+        ).scalar_one()
+        assert overloads == 1, f"expected exactly one {name}, found {overloads}"
+        function = connection.execute(
+            text(
+                "SELECT p.oid, pg_get_userbyid(p.proowner) AS owner, p.prosecdef, "
+                "pg_get_function_identity_arguments(p.oid) AS arguments, "
+                "p.prorettype::regtype::text AS returns, "
+                "p.pronamespace::regnamespace::text AS schema, "
+                "has_function_privilege('shiptrace_app', p.oid, 'EXECUTE') AS app_can_execute "
+                "FROM pg_proc p WHERE p.oid = to_regprocedure(:signature)"
+            ),
+            {"signature": f"public.{name}()"},
+        ).one()  # NoResultFound when the function is missing, which fails the test.
+        grants = connection.execute(
+            text(
+                "SELECT a.grantee = 0 AS is_public, pg_get_userbyid(a.grantee) AS grantee, "
+                "a.privilege_type FROM pg_proc p, "
+                "aclexplode(COALESCE(p.proacl, acldefault('f', p.proowner))) AS a "
+                "WHERE p.oid = :oid"
+            ),
+            {"oid": function.oid},
+        ).all()
+    assert (function.schema, function.arguments, function.returns) == ("public", "", "trigger")
+    assert function.owner == "shiptrace_migrator"
+    assert function.prosecdef is False
+    assert function.app_can_execute is False
+    assert not any(grant.is_public for grant in grants), "PUBLIC holds a privilege on the function"
+    # The ACL is exactly the owner's EXECUTE, the PostgreSQL form of "granted to nobody else".
+    assert {(grant.grantee, grant.privilege_type) for grant in grants} == {
+        ("shiptrace_migrator", "EXECUTE")
+    }
+
+
+@pytest.mark.parametrize("table", TABLES)
+def test_runtime_role_has_no_trigger_privilege_on_the_event_tables(
+    admin: Engine, table: str
+) -> None:
+    query = f"SELECT has_table_privilege('shiptrace_app', 'public.{table}', 'TRIGGER')"
+    assert scalar(admin, query) is False
+
+
+def test_runtime_role_can_create_neither_schema_objects_nor_temporary_ones(admin: Engine) -> None:
+    """With no CREATE on `public` and no TEMP on the database, the runtime role cannot place a
+    function where it could shadow a trigger function's lookups, in `public` or in `pg_temp`.
+    has_*_privilege includes what PUBLIC grants, so this covers PUBLIC as well."""
+    assert (
+        scalar(admin, "SELECT has_schema_privilege('shiptrace_app', 'public', 'CREATE')") is False
+    )
+    assert (
+        scalar(admin, "SELECT has_database_privilege('shiptrace_app', current_database(), 'TEMP')")
+        is False
+    )
+
+
 @pytest.mark.parametrize("column", ["seq", "received_at"])
 def test_timestamps_and_seq_are_documented_as_not_a_commit_order(
     admin: Engine, column: str
