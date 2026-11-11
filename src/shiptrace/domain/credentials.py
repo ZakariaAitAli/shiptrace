@@ -23,6 +23,7 @@ class Action(StrEnum):
     ISSUE_CREDENTIAL = "issue_credential"
     LIST_CREDENTIALS = "list_credentials"
     REVOKE_CREDENTIAL = "revoke_credential"
+    INGEST_EVENT = "ingest_event"
 
 
 # Deny by default: an action is allowed only for the scopes listed here.
@@ -32,6 +33,7 @@ _ALLOWED: dict[Action, frozenset[Scope]] = {
     Action.ISSUE_CREDENTIAL: frozenset({Scope.ADMIN}),
     Action.LIST_CREDENTIALS: frozenset({Scope.ADMIN}),
     Action.REVOKE_CREDENTIAL: frozenset({Scope.ADMIN}),
+    Action.INGEST_EVENT: frozenset({Scope.INGEST}),  # Spec §5: ingest only, not even admin.
 }
 
 

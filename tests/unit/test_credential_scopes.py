@@ -21,6 +21,10 @@ EXPECTED = {
     (Scope.ADMIN, Action.REVOKE_CREDENTIAL): True,
     (Scope.READ, Action.REVOKE_CREDENTIAL): False,
     (Scope.INGEST, Action.REVOKE_CREDENTIAL): False,
+    # Spec §5: POST /deployment-events is ingest only. Admin and read cannot record events.
+    (Scope.ADMIN, Action.INGEST_EVENT): False,
+    (Scope.READ, Action.INGEST_EVENT): False,
+    (Scope.INGEST, Action.INGEST_EVENT): True,
 }
 
 
