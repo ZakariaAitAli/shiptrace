@@ -11,7 +11,14 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import FIXED_TIME, DictCredentialAdmin, DictIssuer, DictRegistry, DictStore
+from .fakes import (
+    FIXED_TIME,
+    DictCredentialAdmin,
+    DictDeployments,
+    DictIssuer,
+    DictRegistry,
+    DictStore,
+)
 
 PATH = "/api/v1/credentials"
 FIELDS = {
@@ -53,6 +60,7 @@ def client(tokens: dict[Scope, str], admin_store: DictCredentialAdmin) -> TestCl
         registry=DictRegistry(),
         issuer=DictIssuer(),
         credential_admin=admin_store,
+        deployments=DictDeployments(),
     )
     return TestClient(app, raise_server_exceptions=False)
 

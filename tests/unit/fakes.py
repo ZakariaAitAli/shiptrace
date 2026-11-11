@@ -11,8 +11,10 @@ from shiptrace.application.credentials import (
     StoredCredential,
     UnregisteredBinding,
 )
+from shiptrace.application.deployments import Accepted, DeploymentTarget, Outcome
 from shiptrace.application.registry import Kind, RegistryEntry
 from shiptrace.domain.credentials import Scope
+from shiptrace.domain.deployments import Accept, DeploymentFacts, NewEvent, StoredEvent, decide
 
 FIXED_TIME = datetime(2026, 11, 8, tzinfo=UTC)
 
@@ -120,3 +122,40 @@ class DictCredentialAdmin:
             self.rows[credential_id] = record
             self.writes += 1
         return record
+
+
+@dataclass
+class DictDeployments:
+    """A deployment store that applies the real domain rules in memory and records every call.
+
+    `error` makes every call raise it; `calls` is how a test proves a request never reached the
+    store. It models neither concurrency nor the database: the PostgreSQL tests do."""
+
+    error: Exception | None = None
+    calls: list[tuple[DeploymentTarget, NewEvent, uuid.UUID]] = field(default_factory=list)
+    stored: dict[tuple[uuid.UUID, uuid.UUID, str], tuple[str, str, list[StoredEvent]]] = field(
+        default_factory=dict
+    )
+
+    def record(
+        self, target: DeploymentTarget, event: NewEvent, credential_id: uuid.UUID
+    ) -> Outcome:
+        self.calls.append((target, event, credential_id))
+        if self.error is not None:
+            raise self.error
+        key = (target.service_id, target.environment_id, target.deployment_key)
+        state = self.stored.get(key)
+        facts = None if state is None else DeploymentFacts(state[0], state[1], tuple(state[2]))
+        decision = decide(event, facts)
+        if not isinstance(decision, Accept):
+            return decision
+        event_id = uuid.uuid4()
+        written = StoredEvent(event_id, event.type, event.source_url, event.reason)
+        if state is None:
+            self.stored[key] = (event.version, event.commit_sha, [written])
+        else:
+            state[2].append(written)
+        return Accepted(event_id=event_id, seq=self.events(), received_at=FIXED_TIME)
+
+    def events(self) -> int:
+        return sum(len(events) for _, _, events in self.stored.values())

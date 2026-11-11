@@ -17,13 +17,25 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictCredentialAdmin, DictIssuer, DictRegistry, DictStore
+from .fakes import DictCredentialAdmin, DictDeployments, DictIssuer, DictRegistry, DictStore
 
 TOKENS = {scope: new_token() for scope in Scope}
 STORE = DictStore(
     {
         digest(token): Principal(id=uuid.uuid4(), scope=scope, service_id=None, environment_id=None)
         for scope, token in TOKENS.items()
+        if scope is not Scope.INGEST
+    }
+    | {
+        # An ingest credential is always bound, so the use case can apply R11 (spec §3).
+        digest(TOKENS[Scope.INGEST]): Principal(
+            id=uuid.uuid4(),
+            scope=Scope.INGEST,
+            service_id=uuid.uuid4(),
+            environment_id=uuid.uuid4(),
+            service_slug="route-auth",
+            environment_slug="production",
+        )
     }
 )
 CREDENTIALS = DictCredentialAdmin()
@@ -35,6 +47,7 @@ APP = build_api(
     registry=DictRegistry(),
     issuer=DictIssuer(),
     credential_admin=CREDENTIALS,
+    deployments=DictDeployments(),
 )
 # Which scopes may call each protected route; anything absent here fails the completeness test.
 ALLOWED = {
@@ -45,6 +58,7 @@ ALLOWED = {
     ("POST", "/api/v1/credentials"): {Scope.ADMIN},
     ("GET", "/api/v1/credentials"): {Scope.ADMIN},
     ("POST", "/api/v1/credentials/{credential_id}/revoke"): {Scope.ADMIN},
+    ("POST", "/api/v1/deployment-events"): {Scope.INGEST},
 }
 
 
@@ -52,6 +66,14 @@ ALLOWED = {
 BODIES = {
     "/api/v1/credentials": {"name": "route auth", "scope": "read"},
     "/api/v1/credentials/{credential_id}/revoke": None,  # Revocation takes no body.
+    "/api/v1/deployment-events": {
+        "service": "route-auth",
+        "environment": "production",
+        "deployment_key": "route-auth-1",
+        "type": "started",
+        "version": "1.0.0",
+        "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+    },
 }
 PUBLIC = {("GET", "/healthz"), ("GET", "/readyz")}
 
@@ -89,7 +111,7 @@ def call(method: str, path: str, authorization: str | None) -> int:
 
 
 def test_every_route_is_in_the_scope_table() -> None:
-    assert len(ROUTES) >= 7
+    assert len(ROUTES) >= 8
     assert set(ROUTES) == set(ALLOWED)
 
 

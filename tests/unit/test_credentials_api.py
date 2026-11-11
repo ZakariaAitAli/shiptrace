@@ -12,7 +12,14 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest, display_prefix, is_well_formed
 
-from .fakes import FIXED_TIME, DictCredentialAdmin, DictIssuer, DictRegistry, DictStore
+from .fakes import (
+    FIXED_TIME,
+    DictCredentialAdmin,
+    DictDeployments,
+    DictIssuer,
+    DictRegistry,
+    DictStore,
+)
 
 PATH = "/api/v1/credentials"
 SENTINEL = "zz" + uuid.uuid4().hex[:8]
@@ -61,6 +68,7 @@ def app_with(tokens: dict[Scope, str], issuer: DictIssuer) -> TestClient:
         registry=DictRegistry(),
         issuer=issuer,
         credential_admin=DictCredentialAdmin(),
+        deployments=DictDeployments(),
     )
     return TestClient(app, raise_server_exceptions=False)
 

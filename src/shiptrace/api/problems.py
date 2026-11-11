@@ -15,6 +15,7 @@ from starlette.routing import Match
 from shiptrace.application.access import Forbidden, StoreUnavailable, Unauthenticated
 from shiptrace.application.credential_admin import CredentialNotFound
 from shiptrace.application.credentials import IssuanceRejected
+from shiptrace.application.ingest import EventRejected
 from shiptrace.application.registry import AlreadyExists, InvalidPage, InvalidSlug
 
 MEDIA_TYPE = "application/problem+json"
@@ -27,6 +28,32 @@ PROBLEMS: dict[str, tuple[int, str, str]] = {
     "not_found": (404, "Not found", "The requested resource does not exist."),
     "method_not_allowed": (405, "Method not allowed", "The resource does not support this method."),
     "already_exists": (409, "Already exists", "A resource with this identifier already exists."),
+    # Ingestion rejections (spec §3). The code is the domain's RejectReason value.
+    "event_conflict": (
+        409,
+        "Event conflict",
+        "An event of this type with different content is already recorded.",
+    ),
+    "deployment_attribute_conflict": (
+        409,
+        "Deployment attribute conflict",
+        "The version or commit differs from the recorded deployment.",
+    ),
+    "terminal_conflict": (
+        409,
+        "Terminal conflict",
+        "A different terminal event is already recorded for this deployment.",
+    ),
+    "revert_requires_success": (
+        409,
+        "Revert requires success",
+        "A revert is accepted only after a succeeded event is recorded. Retry later.",
+    ),
+    "revert_not_applicable": (
+        409,
+        "Revert not applicable",
+        "The deployment did not succeed, so it cannot be reverted.",
+    ),
     "validation_failed": (422, "Validation failed", "The request is not valid."),
     "internal_error": (500, "Internal error", "The request could not be completed."),
     "unavailable": (503, "Service unavailable", "A dependency is unavailable. Retry later."),
@@ -127,12 +154,22 @@ def install_problem_handlers(app: FastAPI) -> None:
         errors = [{"location": f"body.{p.field}", "rule": p.rule} for p in error.problems]
         return problem("validation_failed", errors=errors)
 
+    async def event_rejected(_: Request, error: Exception) -> JSONResponse:
+        assert isinstance(error, EventRejected)  # noqa: S101 - registered for this type
+        # An unknown field has no field name of its own (it is client input): the body is the place.
+        errors = [
+            {"location": f"body.{p.field}" if p.field else "body", "rule": p.rule}
+            for p in error.problems
+        ]
+        return problem("validation_failed", errors=errors)
+
     async def not_found(_: Request, __: Exception) -> JSONResponse:
         return problem("not_found")
 
     app.add_exception_handler(CredentialNotFound, not_found)
     app.add_exception_handler(AlreadyExists, already_exists)
     app.add_exception_handler(IssuanceRejected, issuance_rejected)
+    app.add_exception_handler(EventRejected, event_rejected)
     app.add_exception_handler(InvalidSlug, invalid_slug)
     app.add_exception_handler(InvalidPage, invalid_page)
     app.add_exception_handler(Unauthenticated, unauthenticated)
