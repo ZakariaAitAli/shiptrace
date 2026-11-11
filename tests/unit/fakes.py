@@ -11,10 +11,22 @@ from shiptrace.application.credentials import (
     StoredCredential,
     UnregisteredBinding,
 )
+from shiptrace.application.deployment_reads import (
+    DeploymentDetail,
+    DeploymentFilter,
+    DeploymentSummary,
+)
 from shiptrace.application.deployments import Accepted, DeploymentTarget, Outcome
 from shiptrace.application.registry import Kind, RegistryEntry
 from shiptrace.domain.credentials import Scope
-from shiptrace.domain.deployments import Accept, DeploymentFacts, NewEvent, StoredEvent, decide
+from shiptrace.domain.deployments import (
+    Accept,
+    DeploymentFacts,
+    NewEvent,
+    Status,
+    StoredEvent,
+    decide,
+)
 
 FIXED_TIME = datetime(2026, 11, 8, tzinfo=UTC)
 
@@ -122,6 +134,60 @@ class DictCredentialAdmin:
             self.rows[credential_id] = record
             self.writes += 1
         return record
+
+
+def deployment_summary(n: int, **changes: object) -> DeploymentSummary:
+    """A summary whose id is `uuid.UUID(int=n)`, so ids sort the way `n` does."""
+    values: dict[str, object] = {
+        "id": uuid.UUID(int=n),
+        "service_id": uuid.UUID(int=10_000 + n),
+        "service": "payments-api",
+        "environment_id": uuid.UUID(int=20_000 + n),
+        "environment": "production",
+        "deployment_key": f"key-{n}",
+        "version": "1.4.2",
+        "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+        "created_at": FIXED_TIME,
+        "status": Status.IN_PROGRESS,
+    } | changes
+    return DeploymentSummary(**values)  # type: ignore[arg-type]
+
+
+def deployment_detail(summary: DeploymentSummary) -> DeploymentDetail:
+    return DeploymentDetail(deployment=summary, events=())
+
+
+@dataclass
+class DictDeploymentReads:
+    """An in-memory history. `calls` and `gets` show whether a request reached the port at all."""
+
+    items: list[DeploymentSummary] = field(default_factory=list)
+    details: dict[uuid.UUID, DeploymentDetail] = field(default_factory=dict)
+    error: Exception | None = None
+    calls: list[tuple[DeploymentFilter, uuid.UUID | None, int]] = field(default_factory=list)
+    gets: list[uuid.UUID] = field(default_factory=list)
+
+    def list_after(
+        self, filters: DeploymentFilter, after: uuid.UUID | None, limit: int
+    ) -> list[DeploymentSummary]:
+        self.calls.append((filters, after, limit))
+        if self.error is not None:
+            raise self.error
+        matching = [
+            item
+            for item in self.items
+            if (filters.service is None or item.service == filters.service)
+            and (filters.environment is None or item.environment == filters.environment)
+            and (filters.status is None or item.status is filters.status)
+            and (after is None or item.id < after)
+        ]
+        return sorted(matching, key=lambda item: item.id, reverse=True)[:limit]
+
+    def get(self, deployment_id: uuid.UUID) -> DeploymentDetail | None:
+        self.gets.append(deployment_id)
+        if self.error is not None:
+            raise self.error
+        return self.details.get(deployment_id)
 
 
 @dataclass
