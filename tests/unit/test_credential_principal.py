@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 
-from shiptrace.application.access import Principal, StoreUnavailable
+from shiptrace.application.access import InvariantFault, Principal
 from shiptrace.domain.credentials import Scope
 from shiptrace.persistence.credentials import build_principal
 
@@ -90,7 +90,7 @@ def test_an_ingest_row_with_a_missing_binding_fails_closed_without_detail(
     environment_slug: str | None,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    with caplog.at_level(logging.DEBUG), pytest.raises(StoreUnavailable) as caught:
+    with caplog.at_level(logging.DEBUG), pytest.raises(InvariantFault) as caught:
         build_principal(
             credential_id=ID,
             scope="ingest",
@@ -123,7 +123,7 @@ def test_an_unbound_scope_that_carries_a_binding_fails_closed(
     service_slug: str | None,
     environment_slug: str | None,
 ) -> None:
-    with pytest.raises(StoreUnavailable):
+    with pytest.raises(InvariantFault):
         build_principal(
             credential_id=ID,
             scope=scope,

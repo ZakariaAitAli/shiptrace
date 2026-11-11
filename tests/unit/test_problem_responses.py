@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from shiptrace.api.app import build_api
 from shiptrace.api.auth import require
-from shiptrace.application.access import Principal, StoreUnavailable
+from shiptrace.application.access import InvariantFault, Principal, StoreUnavailable
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Action, Scope, digest
 
@@ -39,10 +39,13 @@ PROBE = "/api/v1/_probe"
 class DictStore:
     known: dict[bytes, Principal] = field(default_factory=dict)
     broken: bool = False
+    faulty: bool = False
 
     def find_active(self, secret_digest: bytes) -> Principal | None:
         if self.broken:
             raise StoreUnavailable
+        if self.faulty:
+            raise InvariantFault
         return self.known.get(secret_digest)
 
 
@@ -242,6 +245,13 @@ def test_store_outage_is_503_with_retry_after(tokens: dict[Scope, str]) -> None:
     response = client.get(PROBE, headers=bearer(tokens[Scope.ADMIN]))
     assert_problem(response, 503, "unavailable")
     assert response.headers["retry-after"].isdigit()
+
+
+def test_an_invariant_fault_is_a_500_that_is_not_retryable(tokens: dict[Scope, str]) -> None:
+    client = TestClient(probe_app(DictStore(faulty=True)), raise_server_exceptions=False)
+    response = client.get(PROBE, headers=bearer(tokens[Scope.ADMIN]))
+    assert_problem(response, 500, "internal_error")
+    assert "retry-after" not in response.headers
 
 
 def test_unexpected_errors_are_500_and_reveal_nothing(client: TestClient) -> None:

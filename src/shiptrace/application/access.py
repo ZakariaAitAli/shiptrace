@@ -16,7 +16,13 @@ class Forbidden(Exception):
 
 
 class StoreUnavailable(Exception):
-    """The credential store could not answer. Not an authentication failure."""
+    """The credential store could not answer. Not an authentication failure. Retryable."""
+
+
+class InvariantFault(Exception):
+    """Stored data or a database rule disagrees with what the code guarantees: a corrupt row, an
+    impossible event set, a constraint that should never fire. Not retryable, and not a client
+    error. Carries no message, cause or value, so nothing from the database can travel with it."""
 
 
 @dataclass(frozen=True)

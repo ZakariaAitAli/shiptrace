@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from shiptrace.application.access import Principal, StoreUnavailable
+from shiptrace.application.access import InvariantFault, Principal, StoreUnavailable
 from shiptrace.application.credentials import CredentialNotStored, WrongDatabaseRole
 from shiptrace.domain.credentials import Scope
 
@@ -69,14 +69,14 @@ def build_principal(
 
     The database already forbids it (the binding check and the foreign keys), so this is the last
     line if a row ever disagrees: an ingest credential must have all four values, any other scope
-    none. The credential is then neither accepted nor reported as invalid; the store is treated as
-    unable to answer. The log line carries no id or slug."""
+    none. The credential is then neither accepted nor reported as invalid. This is a data fault, not
+    an outage, so it raises the non-retryable InvariantFault. The log line carries no id or slug."""
     bound = (service_id, environment_id, service_slug, environment_slug)
     is_ingest = Scope(scope) is Scope.INGEST
     consistent = all(v is not None for v in bound) if is_ingest else all(v is None for v in bound)
     if not consistent:
         _log.error("credential binding is inconsistent")
-        raise StoreUnavailable
+        raise InvariantFault
     return Principal(
         id=credential_id,
         scope=Scope(scope),
