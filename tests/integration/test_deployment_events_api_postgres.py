@@ -313,6 +313,64 @@ def test_unauthenticated_and_wrong_scope_calls_never_reach_the_store(
     assert counts(admin) == before
 
 
+@pytest.mark.parametrize(
+    ("expired", "revoked"),
+    [(True, False), (False, True), (True, True)],
+    ids=["expired", "revoked", "expired-and-revoked"],
+)
+def test_an_expired_or_revoked_ingest_credential_is_401_and_never_reaches_the_store(
+    api: Api, world: World, admin: Engine, migrator: Engine, spy: Spy, expired: bool, revoked: bool
+) -> None:
+    """AC6 for this route: a credential bound to a real target and otherwise valid, but dead."""
+    dead = new_token()
+    with migrator.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO api_credentials (name, scope, service_id, environment_id, "
+                "secret_sha256, display_prefix, expires_at, revoked_at) VALUES "
+                "('dead', 'ingest', :service, :environment, :digest, :prefix, "
+                "CASE WHEN :expired THEN now() - interval '1 second' END, "
+                "CASE WHEN :revoked THEN now() END)"
+            ),
+            {
+                "service": world.service_id,
+                "environment": world.environment_id,
+                "digest": digest(dead),
+                "prefix": display_prefix(dead),
+                "expired": expired,
+                "revoked": revoked,
+            },
+        )
+    before = counts(admin)
+    refused = api.client.post(PATH, json=event(world), headers=bearer(dead))
+    assert_problem(refused, 401, "unauthenticated")
+    assert refused.headers["www-authenticate"] == "Bearer"
+    assert spy.calls == 0
+    assert counts(admin) == before
+    # The same body, with a live credential for the same target, is accepted: the 401 was the
+    # credential's, not the payload's, and this one call is the only one the store ever saw.
+    assert api.client.post(PATH, json=event(world), headers=bearer(world.ingest)).status_code == 201
+    assert spy.calls == 1
+
+
+def test_a_credential_revoked_after_use_is_refused_on_the_next_request(
+    api: Api, world: World, admin: Engine, migrator: Engine, spy: Spy
+) -> None:
+    """AC11 on this route: revocation takes effect on the next request, with no cache."""
+    assert api.client.post(PATH, json=event(world), headers=bearer(world.ingest)).status_code == 201
+    assert spy.calls == 1
+    with migrator.begin() as connection:
+        connection.execute(
+            text("UPDATE api_credentials SET revoked_at = now() WHERE secret_sha256 = :digest"),
+            {"digest": digest(world.ingest)},
+        )
+    before = counts(admin)
+    response = api.client.post(PATH, json=event(world), headers=bearer(world.ingest))
+    assert_problem(response, 401, "unauthenticated")
+    assert spy.calls == 1  # Unchanged: the revoked credential reached no persistence.
+    assert counts(admin) == before
+
+
 def test_a_foreign_target_is_the_same_403_whether_or_not_it_exists(
     api: Api, world: World, admin: Engine, spy: Spy
 ) -> None:
@@ -545,13 +603,48 @@ def send(api: Api, world: World, key: str, kind: EventType) -> tuple[int, str | 
     return response.status_code, response.json()["code"] if response.status_code >= 400 else None
 
 
-def deliver(api: Api, world: World, order: Sequence[EventType]) -> tuple[str, Outcomes, list[Any]]:
+def deployment_counts(admin: Engine, world: World, key: str) -> tuple[int, int]:
+    """(deployments, events) committed for one deployment key."""
+    with admin.connect() as connection:
+        row = connection.execute(
+            text(
+                "SELECT count(DISTINCT d.id), count(e.id) FROM deployments d "
+                "LEFT JOIN deployment_events e ON e.deployment_id = d.id "
+                "WHERE d.service_id = :s AND d.environment_id = :e AND d.deployment_key = :k"
+            ),
+            {"s": world.service_id, "e": world.environment_id, "k": key},
+        ).one()
+    return int(row[0]), int(row[1])
+
+
+def send_and_check(
+    api: Api, world: World, admin: Engine, key: str, kind: EventType, events_before: int
+) -> tuple[tuple[int, str | None], int]:
+    """Sends one request, then checks what that single transaction left behind.
+
+    A deployment exists exactly when it has events, so a refused first event (an R9 revert, or
+    any rejection) leaves no deployment row; a 201 added exactly one event; anything else added
+    none; and no deployment anywhere in this test's world is left without events. Checked after
+    every request, so a transient orphan that a later event would fill is still caught."""
+    outcome = send(api, world, key, kind)
+    deployments, events = deployment_counts(admin, world, key)
+    assert deployments <= 1, (kind, outcome)
+    assert (deployments == 1) == (events > 0), ("deployment and events disagree", kind, outcome)
+    assert events - events_before == (1 if outcome[0] == 201 else 0), (kind, outcome)
+    assert deployments_without_events(admin, world) == 0, (kind, outcome)
+    return outcome, events
+
+
+def deliver(
+    api: Api, world: World, admin: Engine, order: Sequence[EventType]
+) -> tuple[str, Outcomes, list[Any]]:
     """Sends each event once, in order, then retries R9 rejections until nothing changes."""
     key = "ac4-" + uuid.uuid4().hex[:10]
     log: Outcomes = {}
     pending: list[EventType] = []
+    events = 0
     for kind in order:
-        outcome = send(api, world, key, kind)
+        outcome, events = send_and_check(api, world, admin, key, kind, events)
         log.setdefault(kind, []).append(outcome)
         if outcome == RETRYABLE:
             pending.append(kind)
@@ -559,7 +652,7 @@ def deliver(api: Api, world: World, order: Sequence[EventType]) -> tuple[str, Ou
     while pending and progress:
         progress = False
         for kind in list(pending):
-            outcome = send(api, world, key, kind)
+            outcome, events = send_and_check(api, world, admin, key, kind, events)
             log[kind].append(outcome)
             if outcome != RETRYABLE:
                 pending.remove(kind)
@@ -604,7 +697,7 @@ def test_ac4_every_order_of_a_valid_set_converges_with_every_event_stored_once(
 ) -> None:
     expected = derive_status(valid_set)
     for order in permutations(valid_set):
-        key, log, pending = deliver(api, world, order)
+        key, log, pending = deliver(api, world, admin, order)
         stored = stored_types(admin, world, key)
         assert pending == [], order
         assert sorted(stored) == sorted(valid_set), order
@@ -632,7 +725,7 @@ def test_ac4_competing_terminals_follow_first_committed_and_do_not_converge(
     finals: set[Status] = set()
     for order in permutations(events):
         winner = first_terminal(order)
-        key, log, pending = deliver(api, world, order)
+        key, log, pending = deliver(api, world, admin, order)
         stored = stored_types(admin, world, key)
         assert pending == [], order
         assert [t for t in stored if t in TERMINAL] == [winner], order
