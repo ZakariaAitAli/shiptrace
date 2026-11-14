@@ -282,6 +282,49 @@ part of a token beyond the public `display_prefix`:
 - Revocation takes effect on the next authenticated request (AC11): authentication reads the
   stored `revoked_at` on every request, with no cache.
 
+### Deployment history and detail
+
+**Proposed, awaiting owner approval** (the routes are in the table above; the field lists below
+were not defined before). Both routes are for `read` and `admin` credentials; an `ingest`
+credential is `403`.
+
+Deployment object:
+
+```json
+{
+  "id": "<uuid>",
+  "service": "payments-api",
+  "environment": "production",
+  "deployment_key": "gha-12345678-1",
+  "version": "1.4.2",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "status": "succeeded",
+  "created_at": "<RFC 3339>"
+}
+```
+
+`status` is derived from the stored events on every read (§3). `created_at` is the database's
+time when the deployment's first event was accepted. The internal ids of the service, the
+environment and the reporting credential are not returned.
+
+- `GET /deployments` takes `service`, `environment`, `status`, `limit` and `cursor`. `service` and
+  `environment` are slugs; `status` is one of the five statuses of §3 and requires both of the
+  others. It answers `200` with `{"items": [<deployment>, ...], "next_cursor": "<opaque>"}`, newest
+  first: by `id` descending, a UUIDv7 the database assigns, so by creation time. `next_cursor` is
+  `null` on the last page. A slug that names nothing registered gives an empty page, not an error.
+  A malformed slug, an unknown status, a status without both slugs, a `limit` outside 1–100 or a
+  cursor not issued by this list is `422` `validation_failed`, naming the parameter and the rule,
+  never the value.
+- `GET /deployments/{id}` answers `200` with the deployment object plus `"events"`: every stored
+  event in the order the server recorded it, each
+  `{"id": "<uuid>", "type": "succeeded", "received_at": "<RFC 3339>", "source_url": "<url or null>",
+  "reason": "<text or null>"}`. An `id` that names no deployment is `404` `not_found`; an `id` that
+  is not a UUID is `422` `validation_failed`.
+- `reason` and `source_url` are returned exactly as stored, as JSON strings. A client that
+  displays them must escape them; `source_url` is never fetched by ShipTrace.
+- Paging follows creation order, not commit order: a deployment whose first transaction commits
+  late can fall behind a cursor that has already passed it, and appears on a reload.
+
 ### Errors
 
 Every error is `application/problem+json` with `type` `urn:shiptrace:problem:<code>`, `title`,
