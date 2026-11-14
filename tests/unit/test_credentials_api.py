@@ -15,6 +15,7 @@ from shiptrace.domain.credentials import Scope, digest, display_prefix, is_well_
 from .fakes import (
     FIXED_TIME,
     DictCredentialAdmin,
+    DictDeploymentReads,
     DictDeployments,
     DictIssuer,
     DictRegistry,
@@ -69,6 +70,7 @@ def app_with(tokens: dict[Scope, str], issuer: DictIssuer) -> TestClient:
         issuer=issuer,
         credential_admin=DictCredentialAdmin(),
         deployments=DictDeployments(),
+        deployment_reads=DictDeploymentReads(),
     )
     return TestClient(app, raise_server_exceptions=False)
 

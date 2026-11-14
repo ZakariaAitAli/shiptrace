@@ -19,7 +19,14 @@ from shiptrace.application.access import InvariantFault, Principal, StoreUnavail
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictCredentialAdmin, DictDeployments, DictIssuer, DictRegistry, DictStore
+from .fakes import (
+    DictCredentialAdmin,
+    DictDeploymentReads,
+    DictDeployments,
+    DictIssuer,
+    DictRegistry,
+    DictStore,
+)
 
 PATH = "/api/v1/deployment-events"
 SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -102,6 +109,7 @@ def rig() -> Rig:
         issuer=DictIssuer(),
         credential_admin=DictCredentialAdmin(),
         deployments=deployments,
+        deployment_reads=DictDeploymentReads(),
     )
     return Rig(TestClient(app, raise_server_exceptions=False), deployments, tokens)
 

@@ -17,7 +17,16 @@ from shiptrace.application.access import Principal
 from shiptrace.application.credentials import new_token
 from shiptrace.domain.credentials import Scope, digest
 
-from .fakes import DictCredentialAdmin, DictDeployments, DictIssuer, DictRegistry, DictStore
+from .fakes import (
+    DictCredentialAdmin,
+    DictDeploymentReads,
+    DictDeployments,
+    DictIssuer,
+    DictRegistry,
+    DictStore,
+    deployment_detail,
+    deployment_summary,
+)
 
 TOKENS = {scope: new_token() for scope in Scope}
 STORE = DictStore(
@@ -40,6 +49,7 @@ STORE = DictStore(
 )
 CREDENTIALS = DictCredentialAdmin()
 KNOWN = CREDENTIALS.add_record()  # An allowed revoke reaches a real row, so 200, not 404.
+DEPLOYMENT = deployment_summary(1)  # An allowed detail read reaches a real deployment likewise.
 APP = build_api(
     readiness=lambda: True,
     docs_enabled=False,
@@ -48,6 +58,7 @@ APP = build_api(
     issuer=DictIssuer(),
     credential_admin=CREDENTIALS,
     deployments=DictDeployments(),
+    deployment_reads=DictDeploymentReads(details={DEPLOYMENT.id: deployment_detail(DEPLOYMENT)}),
 )
 # Which scopes may call each protected route; anything absent here fails the completeness test.
 ALLOWED = {
@@ -59,6 +70,8 @@ ALLOWED = {
     ("GET", "/api/v1/credentials"): {Scope.ADMIN},
     ("POST", "/api/v1/credentials/{credential_id}/revoke"): {Scope.ADMIN},
     ("POST", "/api/v1/deployment-events"): {Scope.INGEST},
+    ("GET", "/api/v1/deployments"): {Scope.ADMIN, Scope.READ},
+    ("GET", "/api/v1/deployments/{deployment_id}"): {Scope.ADMIN, Scope.READ},
 }
 
 
@@ -106,12 +119,14 @@ def test_the_route_table_and_the_schema_agree() -> None:
 def call(method: str, path: str, authorization: str | None) -> int:
     headers = {} if authorization is None else {"Authorization": authorization}
     body = BODIES.get(path, {"slug": "route-auth"}) if method == "POST" else None
-    url = path.replace("{credential_id}", str(KNOWN.id))
+    url = path.replace("{credential_id}", str(KNOWN.id)).replace(
+        "{deployment_id}", str(DEPLOYMENT.id)
+    )
     return CLIENT.request(method, url, headers=headers, json=body).status_code
 
 
 def test_every_route_is_in_the_scope_table() -> None:
-    assert len(ROUTES) >= 8
+    assert len(ROUTES) >= 10
     assert set(ROUTES) == set(ALLOWED)
 
 
