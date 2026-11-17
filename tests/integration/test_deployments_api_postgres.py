@@ -233,3 +233,29 @@ def test_reading_writes_no_deployment_or_event(api: Api, world: World, admin: En
         history(api, world, status="succeeded")
         assert api.client.get(f"{PATH}/{item['id']}", headers=bearer(world.read)).status_code == 200
     assert counts(admin) == before
+
+
+def test_latest_success_is_selected_and_revoked_over_http(api: Api, world: World) -> None:
+    path = f"/api/v1/services/{world.service}/environments/{world.environment}/latest"
+    assert api.client.get(path, headers=bearer(world.read)).json() is None
+    report(api, world, "old", "started")
+    report(api, world, "new", "succeeded")
+    report(api, world, "old", "succeeded")
+    response = api.client.get(path, headers=bearer(world.read))
+    assert response.status_code == 200
+    assert response.json()["deployment_key"] == "old"
+    assert response.json()["status"] == "succeeded"
+    report(api, world, "old", "reverted", reason="roll back")
+    assert api.client.get(path, headers=bearer(world.read)).json()["deployment_key"] == "new"
+    assert api.client.get(path).status_code == 401
+    assert api.client.get(path, headers=bearer(world.ingest)).status_code == 403
+    # Revocation is an actual credential lifecycle action, visible on the next read.
+    credentials = api.client.get("/api/v1/credentials", headers=bearer(world.admin)).json()["items"]
+    credential_id = next(
+        c["id"] for c in credentials if c["display_prefix"] == display_prefix(world.read)
+    )
+    revoked = api.client.post(
+        f"/api/v1/credentials/{credential_id}/revoke", headers=bearer(world.admin)
+    )
+    assert revoked.status_code == 200
+    assert api.client.get(path, headers=bearer(world.read)).status_code == 401

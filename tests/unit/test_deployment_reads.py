@@ -18,6 +18,7 @@ from shiptrace.application.deployment_reads import (
     DeploymentNotFound,
     InvalidFilter,
     get_deployment,
+    get_latest_successful,
     list_deployments,
 )
 from shiptrace.application.registry import MAX_PAGE, InvalidPage
@@ -225,3 +226,25 @@ def test_store_errors_propagate_as_the_same_object(
     with pytest.raises(type(error)) as detail:
         get_deployment(READER, uuid.uuid4(), reads)
     assert listing.value is error and detail.value is error
+
+
+@pytest.mark.parametrize("who", [READER, ADMIN])
+def test_latest_returns_the_read_result(who: Principal) -> None:
+    reads = DictDeploymentReads()
+    assert get_latest_successful(who, "payments-api", "production", reads) is None
+    reads.latest_result = deployment_summary(9, status=Status.SUCCEEDED)
+    assert get_latest_successful(who, "payments-api", "production", reads) == reads.latest_result
+
+
+@pytest.mark.parametrize(
+    "service,environment", [("BAD", "production"), ("payments-api", ""), (None, "production")]
+)
+def test_latest_validates_both_slugs_before_the_store(service: Any, environment: Any) -> None:
+    reads = DictDeploymentReads(error=AssertionError("store must not be reached"))
+    with pytest.raises(InvalidFilter):
+        get_latest_successful(READER, service, environment, reads)
+
+
+def test_latest_authorizes_before_validating() -> None:
+    with pytest.raises(Forbidden):
+        get_latest_successful(INGEST, "BAD", "", DictDeploymentReads())

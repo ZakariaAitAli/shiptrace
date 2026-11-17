@@ -62,6 +62,10 @@ APP = build_api(
 )
 # Which scopes may call each protected route; anything absent here fails the completeness test.
 ALLOWED = {
+    ("GET", "/api/v1/services/{service}/environments/{environment}/latest"): {
+        Scope.ADMIN,
+        Scope.READ,
+    },
     ("GET", "/api/v1/services"): {Scope.ADMIN, Scope.READ},
     ("POST", "/api/v1/services"): {Scope.ADMIN},
     ("GET", "/api/v1/environments"): {Scope.ADMIN, Scope.READ},
@@ -122,6 +126,7 @@ def call(method: str, path: str, authorization: str | None) -> int:
     url = path.replace("{credential_id}", str(KNOWN.id)).replace(
         "{deployment_id}", str(DEPLOYMENT.id)
     )
+    url = url.replace("{service}", "route-auth").replace("{environment}", "production")
     return CLIENT.request(method, url, headers=headers, json=body).status_code
 
 

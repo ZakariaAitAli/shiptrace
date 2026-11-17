@@ -1,4 +1,6 @@
-"""Deployment history and detail from PostgreSQL (spec §3 and §5, ARCHITECTURE §3), read-only.
+"""Read-only deployment history, detail and latest success from PostgreSQL.
+
+Spec §3 and §5; ARCHITECTURE §3.
 
 Every statement is one SELECT with bound parameters, so the runtime role needs nothing beyond the
 SELECT it already has. Nothing here writes, locks or takes a transaction of its own that matters.
@@ -90,6 +92,25 @@ _GET = text(
 )
 
 
+# One snapshot: select by the success event's global sequence (spec section 3).
+# Deployment creation time is intentionally irrelevant. A later revert removes eligibility.
+_LATEST = text(
+    "SELECT d.id, d.service_id, s.slug AS service, d.environment_id, e.slug AS environment, "
+    "d.deployment_key, d.version, d.commit_sha, d.created_at, t.types "
+    "FROM deployments AS d "
+    "JOIN services AS s ON s.id = d.service_id "
+    "JOIN environments AS e ON e.id = d.environment_id "
+    "JOIN deployment_events AS success ON success.deployment_id = d.id "
+    "AND success.type = 'succeeded' "
+    "LEFT JOIN LATERAL (SELECT array_agg(x.type ORDER BY x.seq) AS types "
+    "FROM deployment_events AS x WHERE x.deployment_id = d.id) AS t ON true "
+    "WHERE s.slug = :service AND e.slug = :environment "
+    "AND NOT EXISTS (SELECT 1 FROM deployment_events AS reverted "
+    "WHERE reverted.deployment_id = d.id AND reverted.type = 'reverted') "
+    "ORDER BY success.seq DESC LIMIT 1"
+)
+
+
 def _summary(row: Row[Any], types: list[str] | None) -> DeploymentSummary:
     """Raises ValueError for no events, a type the domain does not know, or an impossible set."""
     return DeploymentSummary(
@@ -138,6 +159,20 @@ class PostgresDeploymentReads:
             failure = _corrupt()
         # Raised outside the except blocks, so neither __cause__ nor __context__ holds the driver
         # error, whose statement and bound values must not travel onward.
+        raise failure
+
+    def latest_successful(self, service: str, environment: str) -> DeploymentSummary | None:
+        failure: InvariantFault | StoreUnavailable
+        try:
+            with self._engine.connect() as connection:
+                row = connection.execute(
+                    _LATEST, {"service": service, "environment": environment}
+                ).first()
+            return None if row is None else _summary(row, row.types)
+        except SQLAlchemyError as error:
+            failure = classify_database_error(error)
+        except ValueError:
+            failure = _corrupt()
         raise failure
 
     def get(self, deployment_id: uuid.UUID) -> DeploymentDetail | None:

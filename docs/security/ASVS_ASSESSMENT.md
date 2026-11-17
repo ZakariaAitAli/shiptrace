@@ -120,3 +120,15 @@ and names the phase that builds it. It supersedes the S2 index only where it say
 | 16.2.1–16.2.5, 16.3.1–16.3.4, 16.4.1 | `src` has five fixed-text log lines. Nothing logs a rejection, an authentication failure or a credential lifecycle action. Secret-sentinel checks exist at the application level; the engine hides bind parameters (V261) | **Structured logging and a real-process sentinel (AC10, AC18, P3);** T30 |
 | 16.5.1–16.5.3 | Problem documents have fixed text and no value (V243). Store faults are sanitized and non-retryable, with no cause or context (V219) | Review of all routes at the final assessment |
 | 6.3.1 | **None for ingestion.** Failed-authentication limits do not exist; any well-formed token costs a database lookup (T10) | AC9 |
+
+## P2 read-side evidence note (2026-11-17)
+
+No row above is promoted to Pass. Latest-successful adds read/admin route and application checks,
+validated slugs, target-isolated bound SQL, exclusion after reversion and sequence-based selection.
+Tests cover the real PostgreSQL/runtime-role path, concurrent histories and snapshot consistency,
+revocation over HTTP and sanitized datastore failures. See the dated verification-log follow-up.
+
+A retained OpenAPI snapshot and drift/auth-metadata checks now exist. This partially addresses the
+older missing-schema note for 4.1.1; it does not complete the requirement. Older routes' validation
+error declarations and the ingestion body remain incomplete, and full schema-driven contract tests,
+performance measurements and the P2 gate remain pending. Existing P3 resource/logging risks persist.
