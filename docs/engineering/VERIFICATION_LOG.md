@@ -526,7 +526,7 @@ Documentation only, run in this session on `0b6a049`. Committed as `45e50ac` (sp
 | ID | Check | Outcome |
 |---|---|---|
 | V171 | `python3 -I scripts/check_repo.py` after the spec and ADR edits, and again after the IPv4 correction | Passed both times (`repository checks: OK`) |
-| V172 | Scope and limits | The final event field formats were accepted, the R1 to R11 precedence order and the acceptance of ADR-0003 (terminal types named) and ADR-0004 on 2026-11-10. No code, test or validator changed, and no test suite, Docker run or reviewer was run. `source_url` validation and the precedence order are specified but not yet implemented or tested |
+| V172 | Scope and limits | The final event field formats, the R1 to R11 precedence order, ADR-0003 (terminal types named) and ADR-0004 were accepted on 2026-11-10. No code, test or validator changed, and no test suite, Docker run or reviewer was run. `source_url` validation and the precedence order are specified but not yet implemented or tested |
 
 ## P1 S3 CP11: event field validators
 
