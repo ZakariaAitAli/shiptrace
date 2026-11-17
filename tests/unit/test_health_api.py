@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from shiptrace.api.app import build_api
 from shiptrace.application.registry import Kind, RegistryEntry
 
-from .fakes import DictCredentialAdmin, DictDeployments, DictIssuer
+from .fakes import DictCredentialAdmin, DictDeploymentReads, DictDeployments, DictIssuer
 
 
 class NoRegistry:
@@ -40,6 +40,7 @@ def client(ready: bool = True, docs_enabled: bool = False) -> TestClient:
             issuer=DictIssuer(),
             credential_admin=DictCredentialAdmin(),
             deployments=DictDeployments(),
+            deployment_reads=DictDeploymentReads(),
         )
     )
 
@@ -56,6 +57,7 @@ def test_healthz_never_consults_readiness() -> None:
         issuer=DictIssuer(),
         credential_admin=DictCredentialAdmin(),
         deployments=DictDeployments(),
+        deployment_reads=DictDeploymentReads(),
     )
     response = TestClient(app).get("/healthz")
     assert response.status_code == 200
@@ -112,6 +114,7 @@ def test_healthz_answers_while_readiness_exhausts_the_threadpool() -> None:
             issuer=DictIssuer(),
             credential_admin=DictCredentialAdmin(),
             deployments=DictDeployments(),
+            deployment_reads=DictDeploymentReads(),
         )
         transport = httpx2.ASGITransport(app=app)
         async with httpx2.AsyncClient(transport=transport, base_url="http://test") as client:

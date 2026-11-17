@@ -7,12 +7,14 @@ from fastapi import FastAPI
 
 from shiptrace.api.credentials import build_credentials_router
 from shiptrace.api.deployment_events import build_deployment_events_router
+from shiptrace.api.deployments import build_deployments_router
 from shiptrace.api.health import build_health_router
 from shiptrace.api.problems import install_problem_handlers
 from shiptrace.api.registry import build_registry_router
 from shiptrace.application.access import CredentialStore
 from shiptrace.application.credential_admin import CredentialAdmin
 from shiptrace.application.credentials import CredentialIssuer
+from shiptrace.application.deployment_reads import DeploymentReads
 from shiptrace.application.deployments import DeploymentStore
 from shiptrace.application.registry import Registry
 
@@ -27,6 +29,7 @@ def build_api(
     issuer: CredentialIssuer,
     credential_admin: CredentialAdmin,
     deployments: DeploymentStore,
+    deployment_reads: DeploymentReads,
     lifespan: Lifespan | None = None,
 ) -> FastAPI:
     app = FastAPI(
@@ -41,9 +44,11 @@ def build_api(
     app.state.issuer = issuer
     app.state.credential_admin = credential_admin
     app.state.deployments = deployments
+    app.state.deployment_reads = deployment_reads
     install_problem_handlers(app)
     app.include_router(build_health_router(readiness))
     app.include_router(build_registry_router())
     app.include_router(build_credentials_router())
     app.include_router(build_deployment_events_router())
+    app.include_router(build_deployments_router())
     return app

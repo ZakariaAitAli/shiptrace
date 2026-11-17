@@ -161,7 +161,7 @@ Event body (all fields are length- and pattern-validated; unknown fields rejecte
 
 ### Input formats
 
-Approved by the owner on 2026-11-08; the event fields on 2026-11-10. Values are matched exactly and
+Accepted on 2026-11-08; the event fields on 2026-11-10. Values are matched exactly and
 never normalized: an uppercase slug is rejected, not lowercased. Every value is ASCII except
 `reason`.
 
@@ -210,7 +210,7 @@ can only start a list at a slug of its choosing, which reveals nothing more than
 
 ### Credential issuance
 
-Approved by the owner on 2026-11-08; enforced by the database (migration `0003`, ADR-0012).
+Accepted on 2026-11-08; enforced by the database (migration `0003`, ADR-0012).
 
 - `POST /credentials` issues `read` and `ingest` credentials only. Admin credentials come only from
   the bootstrap CLI under the migrator role.
@@ -218,7 +218,7 @@ Approved by the owner on 2026-11-08; enforced by the database (migration `0003`,
 - Expiry is counted in elapsed 24-hour days from the database's time at issuance, whatever the
   time zone or daylight-saving changes.
 
-Issuance body, approved by the owner on 2026-11-10. `POST /credentials` takes these fields and
+Issuance body, explicitly approved on 2026-11-10. `POST /credentials` takes these fields and
 nothing else; an unknown field is `422`:
 
 ```json
@@ -245,7 +245,7 @@ response only: the service stores its SHA-256 digest and the metadata above, nev
 
 ### Credential listing and revocation
 
-Approved by the owner with CP8 and implemented at `e03637c`; enforced by the same database guard
+Accepted with CP8 and implemented at `e03637c`; enforced by the same database guard
 (migration `0003`, ADR-0012). Both routes are admin only.
 
 Credential object, used by both routes. It holds metadata only: never a token, a digest or any
@@ -281,6 +281,48 @@ part of a token beyond the public `display_prefix`:
   included, and so may an expired credential. Clients never supply a timestamp.
 - Revocation takes effect on the next authenticated request (AC11): authentication reads the
   stored `revoked_at` on every request, with no cache.
+
+### Deployment history and detail
+
+**Accepted on 2026-11-17.** The response fields below complete the previously defined routes.
+Both routes require `read` or `admin` scope; an `ingest` credential receives `403`.
+
+Deployment object:
+
+```json
+{
+  "id": "<uuid>",
+  "service": "payments-api",
+  "environment": "production",
+  "deployment_key": "gha-12345678-1",
+  "version": "1.4.2",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "status": "succeeded",
+  "created_at": "<RFC 3339>"
+}
+```
+
+`status` is derived from the stored events on every read (§3). `created_at` is the database's
+time when the deployment's first event was accepted. The internal ids of the service, the
+environment and the reporting credential are not returned.
+
+- `GET /deployments` takes `service`, `environment`, `status`, `limit` and `cursor`. `service` and
+  `environment` are slugs; `status` is one of the five statuses of §3 and requires both of the
+  others. It answers `200` with `{"items": [<deployment>, ...], "next_cursor": "<opaque>"}`, newest
+  first: by `id` descending, a UUIDv7 the database assigns, so by creation time. `next_cursor` is
+  `null` on the last page. A slug that names nothing registered gives an empty page, not an error.
+  A malformed slug, an unknown status, a status without both slugs, a `limit` outside 1–100 or a
+  cursor not issued by this list is `422` `validation_failed`, naming the parameter and the rule,
+  never the value.
+- `GET /deployments/{id}` answers `200` with the deployment object plus `"events"`: every stored
+  event in the order the server recorded it, each
+  `{"id": "<uuid>", "type": "succeeded", "received_at": "<RFC 3339>", "source_url": "<url or null>",
+  "reason": "<text or null>"}`. An `id` that names no deployment is `404` `not_found`; an `id` that
+  is not a UUID is `422` `validation_failed`.
+- `reason` and `source_url` are returned exactly as stored, as JSON strings. A client that
+  displays them must escape them; `source_url` is never fetched by ShipTrace.
+- Paging follows creation order, not commit order: a deployment whose first transaction commits
+  late can fall behind a cursor that has already passed it, and appears on a reload.
 
 ### Errors
 

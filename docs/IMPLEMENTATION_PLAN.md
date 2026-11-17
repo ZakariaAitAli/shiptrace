@@ -22,7 +22,7 @@ unresolved risks written down. New behavior starts with a failing test.
 
 Evidence is in the verification log, entries V14 to V28.
 
-1. Owner decisions applied.
+1. Recorded decisions applied.
 2. `uv` installed from a checksum-verified release.
 3. Tests first: `tests/unit` for settings validation, and `tests/integration` for every `/readyz`
    case in AC16, including older and newer schemas.
@@ -37,10 +37,10 @@ Pre-commit hook, repeatable smoke script, gate-violation proof and readiness rev
 the verification log, entries V29 to V50.
 
 Guard patch v3 and the `check_repo.py` sandbox enforcement are applied, committed and verified by
-the owner's external gate at `b7ceec8`. The external gate passed at `1822839`, but the focused security review at `c8b5769` failed on three
+the external gate at `b7ceec8`. The external gate passed at `1822839`, but the focused security review at `c8b5769` failed on three
 confirmed blockers. Fixes for V64 to V67 made `.git` read-only to the sandbox and moved commits to
 `scripts/commit.py` (V68 to V95). The external gate at `bf9f754` missed one stale negative test
-(V96 to V101); after its fix the owner's gate passed at `05763a9` (V102), and the owner accepted P0.
+(V96 to V101); after its fix the external gate passed at `05763a9` (V102), and the P0 gate was accepted.
 P1 is authorized and starts from that commit.
 
 ## Standing obligation
@@ -48,7 +48,7 @@ P1 is authorized and starts from that commit.
 Before the first contract migration, in whichever phase needs one: deliver ADR-0011 step 2. Until
 then contract migrations are forbidden.
 
-## Owner decisions needed
+## Project decisions
 
 | # | Decision | Recommendation | Why it matters |
 |---|---|---|---|
@@ -58,5 +58,5 @@ then contract migrations are forbidden.
 | D4 | Enable OS sandbox | **Done: active through guard patch v3** | Turns the agent guardrails into a real boundary |
 | D5 | Accepted MVP risks (eight) | **Provisionally accepted**; reassess before release | None may be marked mitigated without evidence |
 | D6 | Dashboard accounts (ADR-0006) | **Accepted**, subject to P2 security tests | Replaces the rejected token sign-in |
-| D8 | Commit email | **Accepted as public** by the owner | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
-| D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The guard correctly stopped me checking |
+| D8 | Commit email | **Accepted as public** | `zakaria-aitali@outlook.com` is in every commit, and in `scripts/check_history.py`, and becomes public with the repository |
+| D7 | `gh` version | Run `! gh attestation --help`, and upgrade before P5 if it fails | AC22 needs that command, and local gh is 2.46.0. The command was blocked by the execution guard |

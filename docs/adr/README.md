@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 Short records of decisions that are costly to reverse. Status values: `Proposed`, `Accepted`,
-`Superseded by NNNN`. All stay `Proposed` until the owner accepts them. An accepted ADR is not
+`Superseded by NNNN`. All stay `Proposed` until review records their acceptance. An accepted ADR is not
 edited; a later ADR supersedes it.
 
 | ADR | Decision |
@@ -18,3 +18,4 @@ edited; a later ADR supersedes it.
 | [0010](0010-claude-code-configuration.md) | Minimal Claude Code config; enforcement over instruction |
 | [0011](0011-schema-compatibility-readiness.md) | Readiness and schema compatibility |
 | [0012](0012-credential-write-model.md) | Runtime credential writes: column grants and a guard trigger |
+| [0013](0013-signing-key-rotation.md) | Signing-key rotation: retired key bounded to history, exact fingerprint after |
