@@ -29,7 +29,7 @@ fetching suffice, and each server widens the injection surface.
 **Limits, stated plainly.** Text-based command guards can be evaded by indirection, such as a
 written script, or by a tool that rewrites files, as `ruff format .` once did to a hook. They stop
 mistakes, and are not a security boundary. The OS sandbox is the stronger control, and is active
-through guard patch v3, applied by the owner in `a0ee681`.
+through guard patch v3, applied manually in `a0ee681`.
 
 **Sandbox design, as applied.**
 
@@ -47,14 +47,14 @@ through guard patch v3, applied by the owner in `a0ee681`.
   protected lockfile. Dependency changes become owner actions.
 
 **Practical consequences, observed once active.** `scripts/` being protected means changes to gates
-and repository checks are owner patches, even when the owner has asked for them. Docker gates outside
-the two named scripts, such as `check_gates.py`, are owner-run. Inside the sandbox, `git status` lists
+and repository checks are manual patches, even when the owner has asked for them. Docker gates outside
+the two named scripts, such as `check_gates.py`, are manual. Inside the sandbox, `git status` lists
 its `/dev/null` placeholders as untracked, so stage explicit paths and never `git add -A`. Signatures
 read `E` there, because `~/.gnupg` is hidden, so a good signature can only be confirmed outside it.
 
 **Hooks are a third tier.** Command hooks run outside the sandbox with full access and no approval,
 so a hook must never run anything the sandbox can write, and must never trust the working directory
-in its payload. The final review found both broken; the owner patch `p0-final-fixes` addresses this.
+in its payload. The final review found both broken; the manual patch `p0-final-fixes` addresses this.
 The focused review then found git started by `guard_files.py`, and git reads `.git`, which sandboxed
 code can write; that hook now starts no program. For the same reason the pre-commit hook no longer
 runs import-linter, which imports from its working directory. Excluded commands must be plain: run

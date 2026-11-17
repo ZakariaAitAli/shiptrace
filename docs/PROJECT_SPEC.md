@@ -161,7 +161,7 @@ Event body (all fields are length- and pattern-validated; unknown fields rejecte
 
 ### Input formats
 
-Approved by the owner on 2026-11-08; the event fields on 2026-11-10. Values are matched exactly and
+Accepted on 2026-11-08; the event fields on 2026-11-10. Values are matched exactly and
 never normalized: an uppercase slug is rejected, not lowercased. Every value is ASCII except
 `reason`.
 
@@ -210,7 +210,7 @@ can only start a list at a slug of its choosing, which reveals nothing more than
 
 ### Credential issuance
 
-Approved by the owner on 2026-11-08; enforced by the database (migration `0003`, ADR-0012).
+Accepted on 2026-11-08; enforced by the database (migration `0003`, ADR-0012).
 
 - `POST /credentials` issues `read` and `ingest` credentials only. Admin credentials come only from
   the bootstrap CLI under the migrator role.
@@ -218,7 +218,7 @@ Approved by the owner on 2026-11-08; enforced by the database (migration `0003`,
 - Expiry is counted in elapsed 24-hour days from the database's time at issuance, whatever the
   time zone or daylight-saving changes.
 
-Issuance body, approved by the owner on 2026-11-10. `POST /credentials` takes these fields and
+Issuance body, explicitly approved on 2026-11-10. `POST /credentials` takes these fields and
 nothing else; an unknown field is `422`:
 
 ```json
@@ -245,7 +245,7 @@ response only: the service stores its SHA-256 digest and the metadata above, nev
 
 ### Credential listing and revocation
 
-Approved by the owner with CP8 and implemented at `e03637c`; enforced by the same database guard
+Accepted with CP8 and implemented at `e03637c`; enforced by the same database guard
 (migration `0003`, ADR-0012). Both routes are admin only.
 
 Credential object, used by both routes. It holds metadata only: never a token, a digest or any
@@ -284,9 +284,8 @@ part of a token beyond the public `display_prefix`:
 
 ### Deployment history and detail
 
-**Approved by the owner on 2026-11-17** (the routes were already in the table above; the field
-lists were previously proposed). Both routes are for `read` and `admin` credentials; an `ingest`
-credential is `403`.
+**Accepted on 2026-11-17.** The response fields below complete the previously defined routes.
+Both routes require `read` or `admin` scope; an `ingest` credential receives `403`.
 
 Deployment object:
 

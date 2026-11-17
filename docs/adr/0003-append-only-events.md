@@ -1,6 +1,6 @@
 # ADR-0003: Append-only events, natural idempotency key, server time only
 
-Status: Accepted by the owner on 2026-11-10 · Date: 2026-11-01
+Status: Accepted on 2026-11-10 · Date: 2026-11-01
 
 **Context.** CI retries requests, networks reorder them, and history must be trustworthy.
 
