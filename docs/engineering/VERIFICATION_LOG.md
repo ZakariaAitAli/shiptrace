@@ -809,3 +809,10 @@ release or cloud change was made. This does not close the P2 phase gate.
 | V300 | Tests detect real regressions | Five mutants were run against real PostgreSQL and all failed with assertions: timestamp-first ordering, either target predicate ignored, reverted successes included, and a split-snapshot read. Source was restored in `finally`; the final gates ran after restoration. Zero-to-Prod has its own separate verification and no shared application changes. |
 | V301 | Final `scripts/verify.sh` | **ALL GATES PASSED**: repository/history and script/hook checks, lock check, format/lint, strict mypy over 104 source files, three import contracts, wheel contents, **2169 tests passed**, **98% displayed branch coverage**, real-process smoke with database outage/recovery and shutdown. Earlier final attempts stopped on formatting/lint and were corrected; they were not called passes. `git diff --check` passed. |
 | V302 | Limits | No p95/100k-event measurement, new indexes, metrics, dashboard/session implementation, production validation or full P2 gate. `scripts/check_gates.py` remains manual and was not executed. No commit/signature for these changes is claimed. The partial OpenAPI issues remain explicit in `docs/api/README.md`. |
+
+### Review publication and documentation maintenance
+
+The latest-successful slice was published in PR #2 from signed commit `cf7c36a`.
+Documentation updates retain the recorded test outcomes and limitations while using neutral
+decision language. The branch incorporates the read-routes base update `cd7f2f0`; application
+code is unchanged by this synchronization. Repository and signature-history checks passed.
