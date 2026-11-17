@@ -502,9 +502,173 @@ def test_an_unreachable_database_is_unavailable_with_no_cause() -> None:
         for attempt in (
             lambda: unreachable.list_after(DeploymentFilter(), None, 10),
             lambda: unreachable.get(uuid.uuid4()),
+            lambda: unreachable.latest_successful("payments-api", "production"),
         ):
             with pytest.raises(StoreUnavailable) as caught:
                 attempt()
             assert (caught.value.__cause__, caught.value.__context__) == (None, None)
     finally:
+        engine.dispose()
+
+
+def test_latest_uses_success_sequence_and_falls_back_after_reverts(
+    admin: Engine, creator: PostgresDeploymentStore, reads: PostgresDeploymentReads
+) -> None:
+    pair = new_pair(admin)
+    assert reads.latest_successful(pair.service, pair.environment) is None
+    send(creator, pair, "older-created", ST)
+    send(creator, pair, "newer-created", ST)
+    send(creator, pair, "newer-created", S)
+    send(creator, pair, "older-created", S)
+    # Newer failed, cancelled and unfinished runs do not hide the last success.
+    send(creator, pair, "failed", F)
+    send(creator, pair, "cancelled", C)
+    send(creator, pair, "unfinished", ST)
+    unrelated = new_pair(admin)
+    send(creator, unrelated, "unrelated", S)
+    # Independent target controls: dropping either predicate must expose a newer wrong result.
+    other_environment_id, other_environment = new_environment(admin)
+    other_service_id, other_service = new_service(admin)
+    same_service = Pair(
+        pair.service_id,
+        pair.service,
+        other_environment_id,
+        other_environment,
+        new_credential(admin, pair.service_id, other_environment_id),
+    )
+    same_environment = Pair(
+        other_service_id,
+        other_service,
+        pair.environment_id,
+        pair.environment,
+        new_credential(admin, other_service_id, pair.environment_id),
+    )
+    send(creator, same_service, "other-environment", S)
+    send(creator, same_environment, "other-service", S)
+    found = reads.latest_successful(pair.service, pair.environment)
+    assert found is not None and found.deployment_key == "older-created"
+    assert found.status is Status.SUCCEEDED
+    send(creator, pair, "older-created", R)
+    found = reads.latest_successful(pair.service, pair.environment)
+    assert found is not None and found.deployment_key == "newer-created"
+    send(creator, pair, "newer-created", R)
+    assert reads.latest_successful(pair.service, pair.environment) is None
+    assert reads.latest_successful("unknown-service", pair.environment) is None
+    assert reads.latest_successful(pair.service, "unknown-environment") is None
+
+
+@pytest.mark.parametrize(
+    "first_time,second_time,expected",
+    [("2026-01-01", "2026-01-01", "b"), ("2026-01-02", "2026-01-01", "b")],
+)
+def test_latest_uses_sequence_even_when_server_clock_moves_back(
+    admin: Engine,
+    creator: PostgresDeploymentStore,
+    reads: PostgresDeploymentReads,
+    first_time: str,
+    second_time: str,
+    expected: str,
+) -> None:
+    pair = new_pair(admin)
+    send(creator, pair, "a", ST)
+    send(creator, pair, "b", ST)
+    # An admin fixture deliberately assigns identical server timestamps. The runtime role
+    # cannot supply received_at; no historical event is updated or deleted.
+    with admin.begin() as connection:
+        for key, reported_at in [("a", first_time), ("b", second_time)]:
+            connection.execute(
+                text(
+                    "INSERT INTO deployment_events "
+                    "(deployment_id, type, credential_id, received_at) "
+                    "SELECT id, 'succeeded', :credential, CAST(:reported_at AS timestamptz) "
+                    "FROM deployments WHERE service_id=:service AND environment_id=:environment "
+                    "AND deployment_key=:key"
+                ),
+                {
+                    "credential": pair.credential_id,
+                    "service": pair.service_id,
+                    "environment": pair.environment_id,
+                    "key": key,
+                    "reported_at": reported_at,
+                },
+            )
+    found = reads.latest_successful(pair.service, pair.environment)
+    assert found is not None and found.deployment_key == expected
+
+
+def test_latest_selects_from_concurrently_reported_histories(
+    admin: Engine, disposable: Database, reads: PostgresDeploymentReads
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    pair = new_pair(admin)
+    barrier = Barrier(2)
+
+    def finish(key: str) -> None:
+        engine = build_engine(disposable.app_url, OPTIONS)
+        try:
+            barrier.wait(timeout=5)
+            assert not isinstance(send(PostgresDeploymentStore(engine), pair, key, S), Reject)
+        finally:
+            engine.dispose()
+
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        pending = [workers.submit(finish, key) for key in ["one", "two"]]
+        for future in pending:
+            future.result(timeout=15)
+    with admin.connect() as connection:
+        events = connection.execute(
+            text(
+                "SELECT d.deployment_key, e.received_at, e.seq FROM deployments d "
+                "JOIN deployment_events e ON e.deployment_id=d.id "
+                "WHERE d.service_id=:service AND d.environment_id=:environment "
+                "AND e.type='succeeded'"
+            ),
+            {"service": pair.service_id, "environment": pair.environment_id},
+        ).all()
+    assert {row.deployment_key for row in events} == {"one", "two"}
+    expected = max(events, key=lambda row: row.seq).deployment_key
+    found = reads.latest_successful(pair.service, pair.environment)
+    assert found is not None and found.deployment_key == expected
+
+
+def test_latest_selection_and_status_share_one_snapshot(
+    admin: Engine,
+    disposable: Database,
+    creator: PostgresDeploymentStore,
+    reads: PostgresDeploymentReads,
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    from sqlalchemy import event
+
+    pair = new_pair(admin)
+    send(creator, pair, "snapshot", S)
+    engine = build_engine(disposable.app_url, OPTIONS)
+    selected, release = Event(), Event()
+
+    @event.listens_for(engine, "after_cursor_execute")
+    def pause_after_selection(*args: Any) -> None:
+        statement = args[2]
+        if statement.startswith("SELECT ") and not selected.is_set():
+            selected.set()
+            assert release.wait(timeout=10), "selection was not released"
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            future = workers.submit(
+                PostgresDeploymentReads(engine).latest_successful, pair.service, pair.environment
+            )
+            try:
+                assert selected.wait(timeout=5), "selection did not reach PostgreSQL"
+                send(creator, pair, "snapshot", R)
+            finally:
+                release.set()
+            selected_result = future.result(timeout=10)
+        assert selected_result is not None and selected_result.status is Status.SUCCEEDED
+        assert reads.latest_successful(pair.service, pair.environment) is None
+    finally:
+        release.set()
         engine.dispose()

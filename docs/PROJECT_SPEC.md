@@ -284,8 +284,8 @@ part of a token beyond the public `display_prefix`:
 
 ### Deployment history and detail
 
-**Proposed, awaiting owner approval** (the routes are in the table above; the field lists below
-were not defined before). Both routes are for `read` and `admin` credentials; an `ingest`
+**Approved by the owner on 2026-11-17** (the routes were already in the table above; the field
+lists were previously proposed). Both routes are for `read` and `admin` credentials; an `ingest`
 credential is `403`.
 
 Deployment object:
@@ -438,3 +438,16 @@ Advanced RBAC, self-service accounts, SSO, MFA, organizations and tenancy; notif
 integrations beyond GitHub Actions; lead time and restore-time metrics; incident correlation;
 service or environment deletion and renaming; event editing; retention and pruning; charts
 beyond simple tables and counts; multi-region. Any of these requires a spec change first.
+
+### Latest successful deployment (approved 2026-11-17)
+
+`GET /services/{s}/environments/{e}/latest` requires read or admin scope. It returns `200` with
+one deployment object as defined above, or JSON `null` if the target has no eligible deployment
+(including unknown service/environment slugs). Invalid slugs return sanitized `422` responses,
+after authentication and authorization. Failures and credential revocation use the existing API rules.
+
+Choose the currently succeeded deployment with the highest success-event `seq`, as specified
+in §3. Timestamp ties or server-clock changes do not change that order. Creation order is irrelevant. Exclude
+in-progress, failed, cancelled and subsequently reverted deployments; a later revert may reveal
+an earlier success or leave no eligible deployment. This is latest reported success, not proof of
+what is running. Selection and event-derived status are read from one database statement snapshot.

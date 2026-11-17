@@ -14,10 +14,12 @@ from shiptrace.persistence import deployment_reads
 STATEMENTS: dict[str, TextClause] = {
     "list": deployment_reads._LIST,
     "get": deployment_reads._GET,
+    "latest": deployment_reads._LATEST,
 }
 PARAMETERS = {
     "list": {"service", "environment", "after", "status", "limit"},
     "get": {"id"},
+    "latest": {"service", "environment"},
 }
 
 

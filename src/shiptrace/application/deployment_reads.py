@@ -1,4 +1,4 @@
-"""Reading deployment history and one deployment's detail (spec §3 and §5). No HTTP, no database.
+"""Reading deployment history, detail and latest success (spec §3 and §5). No HTTP, no database.
 
 Both reads are for `read` and `admin` credentials, which are not bound to a target, so every
 deployment is visible to them and no per-target isolation applies. Order: authorize, then validate,
@@ -98,6 +98,9 @@ class DeploymentReads(Protocol):
     ) -> list[DeploymentSummary]:
         """Up to `limit` deployments matching `filters` with ids below `after`, newest first."""
 
+    def latest_successful(self, service: str, environment: str) -> DeploymentSummary | None:
+        """Highest success-event sequence for the target, excluding subsequently reverted runs."""
+
     def get(self, deployment_id: uuid.UUID) -> DeploymentDetail | None:
         """One deployment with all its events, or None."""
 
@@ -145,3 +148,17 @@ def get_deployment(
     if detail is None:
         raise DeploymentNotFound
     return detail
+
+
+def get_latest_successful(
+    principal: Principal, service: str, environment: str, reads: DeploymentReads
+) -> DeploymentSummary | None:
+    authorize(principal, Action.VIEW_DEPLOYMENTS)
+    problems = tuple(
+        FieldProblem(name, "slug_format")
+        for name, value in (("service", service), ("environment", environment))
+        if not isinstance(value, str) or not is_valid_slug(value)
+    )
+    if problems:
+        raise InvalidFilter(problems)
+    return reads.latest_successful(service, environment)

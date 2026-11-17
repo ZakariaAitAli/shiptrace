@@ -412,3 +412,63 @@ def test_corrupt_stored_state_is_a_plain_500(
     body = response.json()
     assert body["code"] == "internal_error"
     assert set(body) == {"type", "title", "status", "detail", "code"}
+
+
+LATEST = "/api/v1/services/payments-api/environments/production/latest"
+
+
+def test_latest_returns_only_the_public_summary(
+    client: TestClient, read: dict[str, str], reads: DictDeploymentReads
+) -> None:
+    reads.latest_result = deployment_summary(7, status=Status.SUCCEEDED)
+    response = client.get(LATEST, headers=read)
+    assert response.status_code == 200
+    assert set(response.json()) == SUMMARY_FIELDS
+    assert response.json()["id"] == str(uuid.UUID(int=7))
+    assert response.json()["status"] == "succeeded"
+    assert reads.latest_calls == [("payments-api", "production")]
+
+
+def test_latest_without_a_success_is_json_null(client: TestClient, read: dict[str, str]) -> None:
+    response = client.get(LATEST, headers=read)
+    assert response.status_code == 200
+    assert response.json() is None
+
+
+@pytest.mark.parametrize("scope,expected", [(None, 401), (Scope.INGEST, 403)])
+def test_latest_authentication_precedes_slug_validation(
+    client: TestClient,
+    tokens: dict[Scope, str],
+    reads: DictDeploymentReads,
+    scope: Scope | None,
+    expected: int,
+) -> None:
+    headers = {} if scope is None else {"Authorization": f"Bearer {tokens[scope]}"}
+    response = client.get(LATEST.replace("payments-api", "BAD"), headers=headers)
+    assert response.status_code == expected
+    assert reads.latest_calls == []
+
+
+def test_latest_invalid_slug_is_sanitized(
+    client: TestClient, read: dict[str, str], reads: DictDeploymentReads
+) -> None:
+    response = client.get(LATEST.replace("payments-api", "PRIVATE_BAD"), headers=read)
+    assert response.status_code == 422
+    assert "PRIVATE_BAD" not in response.text
+    assert reads.latest_calls == []
+
+
+@pytest.mark.parametrize("fault,status", [(StoreUnavailable(), 503), (InvariantFault(), 500)])
+def test_latest_store_fault_uses_existing_safe_handlers(
+    client: TestClient,
+    read: dict[str, str],
+    reads: DictDeploymentReads,
+    fault: Exception,
+    status: int,
+) -> None:
+    reads.error = fault
+    response = client.get(LATEST, headers=read)
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/problem+json"
+    assert {"type", "title", "status", "detail", "code"} <= set(response.json())
+    assert "traceback" not in response.text.lower()

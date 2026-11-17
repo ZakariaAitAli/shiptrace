@@ -1,8 +1,10 @@
 """Bearer authentication for API routes. Every protected route depends on require(action)."""
 
 from collections.abc import Callable
+from typing import Annotated
 
-from fastapi import Request
+from fastapi import Request, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from shiptrace.application.access import Principal, authenticate, authorize
 from shiptrace.domain.credentials import Action, is_well_formed
@@ -23,10 +25,20 @@ def bearer_token(values: list[str]) -> str | None:
     return token
 
 
+_SCHEMA_BEARER = HTTPBearer(auto_error=False, scheme_name="BearerAuth")
+
+
 def require(action: Action) -> Callable[[Request], Principal]:
     """A dependency that authenticates the caller, then checks the action. Sync: it does I/O."""
 
-    def dependency(request: Request) -> Principal:
+    def dependency(
+        request: Request,
+        _schema_bearer: Annotated[
+            HTTPAuthorizationCredentials | None, Security(_SCHEMA_BEARER)
+        ] = None,
+    ) -> Principal:
+        # HTTPBearer supplies OpenAPI metadata only. Raw-header parsing below remains authoritative,
+        # including duplicate-header refusal and the stricter token grammar.
         token = bearer_token(request.headers.getlist("authorization"))
         principal = authenticate(token, request.app.state.credentials)
         authorize(principal, action)

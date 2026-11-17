@@ -109,3 +109,19 @@ deploy**. This trades completeness for availability of the system people care ab
     memory and grow storage, an unauthenticated caller can load the database through well-formed
     tokens, and nothing logs a rejection or an authentication failure.
 12. T32: event attribution is not enforced by the database. Reconsider Option B (ADR-0012) with T28.
+
+## P2 read-side follow-up (2026-11-17)
+
+History, detail and latest-successful reads now expose deployment metadata to read/admin credentials.
+The latest route also authorizes in the application layer, validates target slugs and uses bound
+read-only SQL. A success later marked reverted is excluded; highest success-event sequence is
+latest (§3), not deployment creation time or a claim about the running version. T26 remains relevant:
+a compromised target-bound ingest credential may still report a revert until revoked.
+
+Read-side tests exercise unauthorized scopes, sanitized input/store failures, target isolation,
+concurrent histories, immediate credential revocation and one-snapshot selection through a concurrent
+revert. Independent read-only security/test reviews found no remaining confirmed latest runtime
+security defect after corrections. These are bounded local tests, not a P2 phase or production sign-off.
+The new schema snapshot documents bearer auth and latest errors; older-route validation metadata
+and ingestion body definitions remain incomplete (docs/api/README.md). Body/rate limits, structured
+security logs, dashboard/session controls and performance gates remain open; no ASVS status changes.

@@ -183,6 +183,15 @@ class DictDeploymentReads:
         ]
         return sorted(matching, key=lambda item: item.id, reverse=True)[:limit]
 
+    latest_result: DeploymentSummary | None = None
+    latest_calls: list[tuple[str, str]] = field(default_factory=list)
+
+    def latest_successful(self, service: str, environment: str) -> DeploymentSummary | None:
+        self.latest_calls.append((service, environment))
+        if self.error is not None:
+            raise self.error
+        return self.latest_result
+
     def get(self, deployment_id: uuid.UUID) -> DeploymentDetail | None:
         self.gets.append(deployment_id)
         if self.error is not None:

@@ -1,7 +1,9 @@
-"""Deployment history and detail routes (spec §5), for read and admin credentials.
+"""Deployment history, detail and latest-successful routes (spec §5).
+
+All are for read and admin credentials.
 
 Thin adapters around `application.deployment_reads`, which authorizes again and owns the filter
-rules. Both routes depend on require(action) first, so a caller with no credential, or with an
+rules. All routes depend on require(action) first, so a caller with no credential, or with an
 ingest one, learns nothing about whether a query or an id is valid.
 
 The responses show what a reader of deployment history needs and nothing else: the internal ids of
@@ -15,7 +17,7 @@ import binascii
 import re
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -31,6 +33,7 @@ from shiptrace.application.deployment_reads import (
     DeploymentReads,
     DeploymentSummary,
     get_deployment,
+    get_latest_successful,
     list_deployments,
 )
 from shiptrace.application.registry import MAX_PAGE
@@ -40,6 +43,45 @@ from shiptrace.domain.deployments import Status
 PATH = "/api/v1/deployments"
 _CURSOR_LABEL = "deployments"  # Inside every cursor, so another list's cursor is refused here.
 _CURSOR = re.compile(r"[A-Za-z0-9_-]{1,120}", re.ASCII)
+
+
+# These declare the actual RFC 9457 handlers, not FastAPI's default validation payload.
+_PROBLEM_SCHEMA = {
+    "type": "object",
+    "required": ["type", "title", "status", "detail", "code"],
+    "properties": {
+        "type": {"type": "string"},
+        "title": {"type": "string"},
+        "status": {"type": "integer"},
+        "detail": {"type": "string"},
+        "code": {"type": "string"},
+        "errors": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"},
+                    "rule": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+_LATEST_ERRORS: dict[int | str, dict[str, Any]] = {
+    status: {
+        "description": description,
+        "content": {
+            "application/problem+json": {"schema": _PROBLEM_SCHEMA},
+        },
+    }
+    for status, description in {
+        401: "Credential missing or invalid",
+        403: "Insufficient scope",
+        422: "Invalid target slug",
+        500: "Internal error",
+        503: "Datastore unavailable",
+    }.items()
+}
 
 
 class DeploymentView(BaseModel):
@@ -171,5 +213,19 @@ def build_deployments_router() -> APIRouter:
         reads: Annotated[DeploymentReads, Depends(_reads)],
     ) -> DeploymentDetailView:
         return DeploymentDetailView.of_detail(get_deployment(principal, deployment_id, reads))
+
+    @router.get(
+        "/api/v1/services/{service}/environments/{environment}/latest",
+        response_model=DeploymentView | None,
+        responses=_LATEST_ERRORS,
+    )
+    def latest(
+        principal: Annotated[Principal, Depends(require(Action.VIEW_DEPLOYMENTS))],
+        reads: Annotated[DeploymentReads, Depends(_reads)],
+        service: Slug,
+        environment: Slug,
+    ) -> DeploymentView | None:
+        summary = get_latest_successful(principal, service, environment, reads)
+        return None if summary is None else DeploymentView.of(summary)
 
     return router
