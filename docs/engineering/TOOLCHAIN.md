@@ -14,7 +14,7 @@ authority; this records what was chosen and why.
 | Claude Code 2.1.316 | Present; `onFailure` hook option needs ≥ 2.1.295 |
 | bubblewrap | Present |
 | uv 0.13.6 | Installed from the GitHub release, SHA-256 verified. Managed Python 3.14.10 |
-| socat | Installed by the owner |
+| socat | Installed |
 | **Missing** | `make`, `psql`, `shellcheck`, `hadolint`; system Python has no `ensurepip` |
 
 Consequences: project commands are shell scripts rather than a Makefile. `psql` runs through the

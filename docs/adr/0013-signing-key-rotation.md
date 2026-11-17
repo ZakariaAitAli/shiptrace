@@ -1,16 +1,16 @@
 # ADR-0013: Signing-key rotation and the historical verification limit
 
-Status: Accepted by the owner on 2026-11-15 · Date: 2026-11-15
+Status: Accepted on 2026-11-15 · Date: 2026-11-15
 
 **Context.** `scripts/check_history.py` pinned one signing key ID, `9656DC342415CDB2`, and accepted
-signature status `E` ("the public key is not available here") for it. On 2026-11-12 the owner
-created a new key on a new installation of the laptop. The four commits made on 2026-11-14 carry
+signature status `E` ("the public key is not available here") for it. A replacement signing key was
+created on 2026-11-12 after a workstation reinstall. The four commits made on 2026-11-14 carry
 good signatures from it, so Git reports `G`, but the gate rejected them because the pin named only
 the old key.
 
-The retired key was made on the owner's previous Windows WSL environment (the owner's statement;
-this repository cannot confirm it). Its public half could not be recovered on 2026-11-15. It is not
-published on the owner's GitHub account, not on `keys.openpgp.org` or `keyserver.ubuntu.com`, and
+The retired key was reportedly created in the previous Windows WSL environment;
+its origin cannot be independently confirmed from repository evidence. Its public half could not be recovered on 2026-11-15. It is not
+published on the configured GitHub account, not on `keys.openpgp.org` or `keyserver.ubuntu.com`, and
 not in any of the eight Restic snapshots of the new machine (the earliest, from 2026-11-12 22:45
 UTC, holds a keyring with the new key only). So the 115 historical commits cannot be verified, and
 no fingerprint for the retired key is known: only the 64-bit key ID the commits claim.
@@ -57,11 +57,11 @@ no fingerprint for the retired key is known: only the 64-bit key ID the commits 
   a commit was signed by `9656DC342415CDB2`.** It proves only that the commit's signature claims
   that key ID. Anyone who could write a commit before the boundary could have made that claim. The
   boundary limits the damage: the claim is honored for the 115 commits that already existed when
-  the rotation was decided, and for no commit created afterwards. The owner accepts this exception
+  the rotation was decided, and for no commit created afterwards. This exception is accepted
   because the retired public key is unavailable.
 - **The old and the new identity cannot be cryptographically linked.** The retired key cannot sign
   a statement endorsing the new one, and no earlier artifact does. The link rests on this ADR, on
-  the owner's decision, and on the new key being listed on the owner's GitHub account (fingerprint
+  the recorded rotation decision, and on the new key being listed on the configured GitHub account (fingerprint
   `0C8D2B65…A56C` was listed there on 2026-11-15). The same author email is on both ranges, but an
   email address proves nothing.
 - The gate cannot detect a retired key that was compromised before the rotation.
@@ -70,7 +70,7 @@ no fingerprint for the retired key is known: only the 64-bit key ID the commits 
 
 - Verifying new commits needs the current public key in the verifying keyring. A clone or CI job
   without it sees `E` for new commits and fails. Any future CI must import
-  `0C8D2B652F6D7010116DE44AEFF6790D7412A56C` (for example from the owner's GitHub key list) and
+  `0C8D2B652F6D7010116DE44AEFF6790D7412A56C` (for example from the configured GitHub account’s public key list) and
   check the fingerprint after importing.
 - A commit signed by a subkey of the new key reports the subkey's fingerprint in `%GF` and fails.
   This is deliberate; accepting a subkey takes a new ADR.
@@ -82,9 +82,9 @@ no fingerprint for the retired key is known: only the 64-bit key ID the commits 
 **Procedure for the next rotation.** Never edit this ADR or move its boundary.
 
 1. Before retiring a key, export its **public** key (`gpg --armor --export <fingerprint>`) and keep
-   it in a place that outlives the machine, such as the repository and the owner's GitHub account.
+   it in a place that outlives the machine, such as the repository and the configured GitHub account.
    This ADR exists because that was not done.
-2. Create the new key and publish its public half on the owner's GitHub account. Record its
+2. Create the new key and publish its public half on the configured GitHub account. Record its
    complete 40-hex fingerprint. Where possible, have the retiring key certify the new one, so that
    a cryptographic link exists.
 3. Make the last commit signed with the outgoing key. Its hash is the new boundary.

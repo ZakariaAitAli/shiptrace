@@ -1,6 +1,6 @@
 # ADR-0012: Credential write model
 
-Status: Accepted by the owner on 2026-11-10 · Date: 2026-11-08
+Status: Accepted on 2026-11-10 · Date: 2026-11-08
 
 **Context.** S2 issues read and ingest credentials over HTTP, revokes credentials and records
 `last_used_at` (ADR-0005). Until now the runtime role `shiptrace_app` could only `SELECT` from

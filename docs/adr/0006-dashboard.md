@@ -1,9 +1,9 @@
 # ADR-0006: Server-rendered dashboard with separate named accounts
 
-Status: Accepted by the owner, subject to security tests during P2 · Date: 2026-11-01
+Status: Accepted, subject to security tests during P2 · Date: 2026-11-01
 
-**Context.** A minimal, read-only web UI. The owner rejected signing in with API tokens: machine
-credentials and human sign-in must stay separate. Enterprise IAM and RBAC are out of scope.
+**Context.** A minimal, read-only web UI. API tokens are excluded from interactive sign-in: machine
+credentials and user sessions have separate trust boundaries. Enterprise IAM and RBAC are out of scope.
 
 **Decision.**
 - Jinja2 templates served by the same app, with no JavaScript build and a strict CSP.
@@ -23,7 +23,7 @@ outbound dependency. Argon2id is right here, unlike for API tokens, because huma
 low-entropy. Server-side sessions give real logout and need no signing key.
 
 **Rejected.**
-- *Pasted API token* (previous proposal): rejected by the owner.
+- *Pasted API token* (previous proposal): rejected because machine credentials must not grant dashboard access.
 - *GitHub OAuth with an allowlist*: no password storage and possibly the best long-term option, but
   adds an OAuth app, a client secret, outbound calls and ASVS V10. First candidate if accounts
   prove awkward.

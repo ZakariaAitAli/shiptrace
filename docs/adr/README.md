@@ -1,7 +1,7 @@
 # Architecture Decision Records
 
 Short records of decisions that are costly to reverse. Status values: `Proposed`, `Accepted`,
-`Superseded by NNNN`. All stay `Proposed` until the owner accepts them. An accepted ADR is not
+`Superseded by NNNN`. All stay `Proposed` until review records their acceptance. An accepted ADR is not
 edited; a later ADR supersedes it.
 
 | ADR | Decision |
